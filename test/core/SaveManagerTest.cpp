@@ -1,12 +1,14 @@
 #include <cassert>
 #include <iostream>
+#include <filesystem>
 #include "core/SaveManager.h"
 #include "core/UserProfile.h"
 #include "core/Statistics.h"
+#include "app/AppContext.h"
 #include <cstdio>
 
 void testSaveLoad() {
-    const std::string testFile = "test_save.ini";
+    const std::string testFile = "test_dir/test_save.ini";
     SaveManager manager(testFile);
 
     UserProfile p1;
@@ -17,6 +19,8 @@ void testSaveLoad() {
 
     bool saved = manager.save(p1, s1);
     assert(saved);
+    assert(std::filesystem::exists("test_dir"));
+    assert(std::filesystem::exists(testFile));
 
     UserProfile p2;
     Statistics s2;
@@ -26,8 +30,12 @@ void testSaveLoad() {
     assert(p2.xp() == 500);
     assert(p2.hasAchievement("test_achv"));
 
+    // Test saving failure (invalid path)
+    SaveManager badManager("/invalid_root_dir/test.ini");
+    assert(!badManager.save(p1, s1));
+    
     // Cleanup
-    std::remove(testFile.c_str());
+    std::filesystem::remove_all("test_dir");
     std::cout << "testSaveLoad passed!" << std::endl;
 }
 

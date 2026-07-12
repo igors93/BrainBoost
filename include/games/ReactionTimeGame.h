@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <random>
 #include <vector>
 
@@ -29,7 +30,7 @@ private:
     int trial_ = 0;
 
     float waitTimer_ = 0.0f;      // countdown until the panel turns green
-    float reactionTimer_ = 0.0f;  // time elapsed since the panel turned green
+    std::chrono::steady_clock::time_point goTime_;  // time when it turned green
     float pauseTimer_ = 0.0f;     // short pause between trials
     std::vector<float> reactionTimesMs_;
 };

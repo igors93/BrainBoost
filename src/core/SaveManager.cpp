@@ -1,5 +1,6 @@
 #include "core/SaveManager.h"
 
+#include <filesystem>
 #include <fstream>
 #include <utility>
 
@@ -37,12 +38,35 @@ bool SaveManager::save(const UserProfile& profile, const Statistics& stats) cons
     profile.toMap(values);
     stats.toMap(values);
 
-    std::ofstream file(filePath_, std::ios::trunc);
+    std::filesystem::path path(filePath_);
+    if (path.has_parent_path()) {
+        std::error_code ec;
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+    std::string tmpPath = filePath_ + ".tmp";
+
+    std::ofstream file(tmpPath, std::ios::trunc);
     if (!file.is_open()) return false;
 
     file << "# BrainBoost save file\n";
     for (const auto& [key, value] : values) {
         file << key << '=' << value << '\n';
+    }
+
+    file.flush();
+    if (!file.good()) {
+        file.close();
+        std::error_code ec;
+        std::filesystem::remove(tmpPath, ec);
+        return false;
+    }
+    file.close();
+
+    std::error_code ec;
+    std::filesystem::rename(tmpPath, filePath_, ec);
+    if (ec) {
+        std::filesystem::remove(tmpPath, ec);
+        return false;
     }
     return true;
 }

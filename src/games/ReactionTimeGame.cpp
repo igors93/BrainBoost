@@ -13,7 +13,6 @@ ReactionTimeGame::ReactionTimeGame() : rng_(std::random_device{}()) {}
 void ReactionTimeGame::startTrial() {
     std::uniform_real_distribution<float> delay(1.5f, 3.5f);
     waitTimer_ = delay(rng_);
-    reactionTimer_ = 0.0f;
     phase_ = Phase::Waiting;
 }
 
@@ -26,14 +25,32 @@ float ReactionTimeGame::averageMs() const {
 
 void ReactionTimeGame::frame(float deltaSeconds, Renderer& renderer,
                              const Input& input, const Rect& area) {
+    // --- Input Processing --------------------------------------------------
+    const Rect panel{area.x + 16, area.y + 48, area.w - 32, area.h - 64};
+    const bool clicked = input.mousePressed() && panel.contains(input.mouseX(), input.mouseY());
+
+    if (clicked && phase_ == Phase::Waiting) {
+        phase_ = Phase::TooEarly;
+        pauseTimer_ = 1.2f;
+    } else if (clicked && phase_ == Phase::Go) {
+        auto clickTime = std::chrono::steady_clock::now();
+        float ms = std::chrono::duration<float, std::milli>(clickTime - goTime_).count();
+        reactionTimesMs_.push_back(ms);
+        ++trial_;
+        phase_ = Phase::TrialResult;
+        pauseTimer_ = 1.2f;
+    }
+
     // --- State updates -----------------------------------------------------
     switch (phase_) {
         case Phase::Waiting:
             waitTimer_ -= deltaSeconds;
-            if (waitTimer_ <= 0.0f) phase_ = Phase::Go;
+            if (waitTimer_ <= 0.0f) {
+                phase_ = Phase::Go;
+                goTime_ = std::chrono::steady_clock::now();
+            }
             break;
         case Phase::Go:
-            reactionTimer_ += deltaSeconds;
             break;
         case Phase::TrialResult:
         case Phase::TooEarly:
@@ -88,25 +105,12 @@ void ReactionTimeGame::frame(float deltaSeconds, Renderer& renderer,
         panelText = time;
     }
 
-    const Rect panel{area.x + 16, area.y + 48, area.w - 32, area.h - 64};
     renderer.fillRect(panel, panelColor);
     renderer.drawTextCentered(panelText, panel.centerX(),
                               panel.centerY() - renderer.lineHeight(36) * 0.5f, 36,
                               Theme::kText, true);
 
-    const bool clicked =
-        input.mousePressed() && panel.contains(input.mouseX(), input.mouseY());
-    if (!clicked) return;
-
-    if (phase_ == Phase::Waiting) {
-        phase_ = Phase::TooEarly;
-        pauseTimer_ = 1.2f;
-    } else if (phase_ == Phase::Go) {
-        reactionTimesMs_.push_back(reactionTimer_ * 1000.0f);
-        ++trial_;
-        phase_ = Phase::TrialResult;
-        pauseTimer_ = 1.2f;
-    }
+    // Click input is processed at the top of the frame.
 }
 
 bool ReactionTimeGame::isFinished() const { return phase_ == Phase::Done; }

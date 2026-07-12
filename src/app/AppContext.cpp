@@ -14,25 +14,36 @@ void AppContext::loadProgress() {
     }
 }
 
-void AppContext::saveProgress() { saveManager.save(profile, stats); }
+bool AppContext::saveProgress() {
+    if (saveManager.save(profile, stats)) {
+        lastSaveSucceeded = true;
+        lastSaveError.clear();
+        return true;
+    } else {
+        lastSaveSucceeded = false;
+        lastSaveError = "Erro ao salvar o progresso.";
+        return false;
+    }
+}
 
 void AppContext::startGame(const GameInfo& info) {
     if (!info.isImplemented()) return;
 
     activeGame = info.factory();
-    activeGameInfo = &info;
+    activeGameId = info.id;
     resultApplied = false;
     lastUnlocks.clear();
     screen = ScreenId::Playing;
 }
 
 void AppContext::applyResultOnce() {
-    if (!activeGame || resultApplied || activeGameInfo == nullptr) return;
+    const GameInfo* info = registry.findById(activeGameId);
+    if (!activeGame || resultApplied || info == nullptr) return;
 
     const GameResult result = activeGame->result();
     profile.addXp(result.xpEarned);
     profile.registerPlayToday();
-    stats.recordResult(activeGameInfo->category, result);
+    stats.recordResult(info->category, result);
     lastUnlocks = Achievements::evaluate(profile, stats);
     resultApplied = true;
 
@@ -41,7 +52,7 @@ void AppContext::applyResultOnce() {
 
 void AppContext::closeGame(ScreenId fallback) {
     activeGame.reset();
-    activeGameInfo = nullptr;
+    activeGameId.clear();
     resultApplied = false;
     screen = fallback;
 }

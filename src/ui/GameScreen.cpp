@@ -17,6 +17,11 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     renderer.drawTextCentered("Sessão concluída!", cx, y, 24, Theme::kSuccess, true);
     y += 44;
 
+    if (!context.lastSaveSucceeded) {
+        renderer.drawTextCentered(context.lastSaveError, cx, y, 14, Theme::kDanger, true);
+        y += 24;
+    }
+
     char score[32];
     std::snprintf(score, sizeof(score), "%d pontos", result.score);
     renderer.drawTextCentered(score, cx, y, 42, Theme::kText, true);
@@ -48,7 +53,8 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     if (Widgets::button(renderer, input,
                         Rect{cx - buttonWidth - spacing * 0.5f, y, buttonWidth, 46},
                         "Jogar novamente", Theme::kButton, 16)) {
-        context.startGame(*context.activeGameInfo);
+        const GameInfo* info = context.registry.findById(context.activeGameId);
+        if (info) context.startGame(*info);
         return;
     }
     if (Widgets::button(renderer, input,
@@ -60,7 +66,8 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
 
 void GameScreen::render(AppContext& context, Renderer& renderer, const Input& input,
                         const Rect& area, float deltaSeconds) {
-    if (!context.activeGame || context.activeGameInfo == nullptr) {
+    const GameInfo* info = context.registry.findById(context.activeGameId);
+    if (!context.activeGame || info == nullptr) {
         renderer.drawText("Nenhum jogo ativo.", area.x, area.y, 20, Theme::kText, true);
         if (Widgets::button(renderer, input, Rect{area.x, area.y + 40, 190, 44},
                             "Voltar ao início")) {
@@ -70,11 +77,11 @@ void GameScreen::render(AppContext& context, Renderer& renderer, const Input& in
     }
 
     // Header: title + category on the left, exit button on the right.
-    renderer.drawText(context.activeGameInfo->title, area.x, area.y, 26, Theme::kText,
+    renderer.drawText(info->title, area.x, area.y, 26, Theme::kText,
                       true);
-    renderer.drawText(categoryName(context.activeGameInfo->category), area.x,
+    renderer.drawText(categoryName(info->category), area.x,
                       area.y + 38, 14,
-                      Theme::categoryColor(context.activeGameInfo->category));
+                      Theme::categoryColor(info->category));
     if (Widgets::button(renderer, input, Rect{area.right() - 130, area.y, 130, 38},
                         "Sair do jogo", Theme::kButton, 15)) {
         context.closeGame(ScreenId::Home);

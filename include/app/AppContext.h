@@ -24,13 +24,15 @@ struct AppContext {
 
     // Active game session (only valid while screen == ScreenId::Playing).
     std::unique_ptr<Game> activeGame;
-    const GameInfo* activeGameInfo = nullptr;
+    std::string activeGameId;
     bool resultApplied = false;
     std::vector<const AchievementDef*> lastUnlocks;
 
     // Loads saved progress; on first run picks a default name from $USER.
     void loadProgress();
-    void saveProgress();
+    bool saveProgress();
+    std::string lastSaveError;
+    bool lastSaveSucceeded = true;
 
     // Starts a session of `info` and switches to the Playing screen.
     void startGame(const GameInfo& info);
