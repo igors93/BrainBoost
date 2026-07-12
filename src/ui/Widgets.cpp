@@ -12,14 +12,17 @@
 
 namespace Widgets {
 
-bool button(Renderer& renderer, const Input& input, const Rect& rect,
-            const std::string& label, Color background, int fontSize) {
-    const bool hovered = rect.contains(input.mouseX(), input.mouseY());
-
+void drawButton(Renderer& renderer, const Rect& rect, const std::string& label,
+                Color background, int fontSize, bool hovered) {
     renderer.fillRect(rect, hovered ? lighten(background) : background);
     const float textY = rect.y + (rect.h - renderer.lineHeight(fontSize)) * 0.5f;
     renderer.drawTextCentered(label, rect.centerX(), textY, fontSize, Theme::kText);
+}
 
+bool button(Renderer& renderer, const Input& input, const Rect& rect,
+            const std::string& label, Color background, int fontSize) {
+    const bool hovered = rect.contains(input.mouseX(), input.mouseY());
+    drawButton(renderer, rect, label, background, fontSize, hovered);
     return hovered && input.mousePressed();
 }
 
@@ -66,7 +69,7 @@ bool gameCard(Renderer& renderer, const Input& input, const Rect& rect,
     const bool playable = info.isImplemented();
 
     Color background = rgb(info.color);
-    if (!playable) background.a = 110;  // dimmed "coming soon" card
+    if (!playable) background.a = 110;
     renderer.fillRect(rect, hovered && playable ? lighten(background, 14) : background);
     if (hovered && playable) renderer.outlineRect(rect, Theme::kAccent, 2);
 
@@ -78,7 +81,6 @@ bool gameCard(Renderer& renderer, const Input& input, const Rect& rect,
                              rect.y + padding + 30.0f, rect.w - padding * 2.0f, 14,
                              rgb(0xB9C1D4, playable ? 255 : 150));
 
-    // Category tag: colored square + name, bottom-left.
     Color tag = Theme::categoryColor(info.category);
     if (!playable) tag.a = 150;
     renderer.fillRect(Rect{rect.x + padding, rect.bottom() - 26.0f, 10, 10}, tag);
@@ -101,7 +103,6 @@ void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
     const Rect plot{rect.x + axisWidth, rect.y + 8.0f, rect.w - axisWidth - 8.0f,
                     rect.h - 20.0f};
 
-    // Recessive grid at 0 / 50 / 100 with muted axis labels.
     for (int i = 0; i <= 2; ++i) {
         const float y = plot.y + plot.h * (1.0f - static_cast<float>(i) * 0.5f);
         renderer.drawLine(plot.x, y, plot.right(), y, Theme::kGrid);
@@ -121,12 +122,12 @@ void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
     const auto pointAt = [&](int index) {
         const float x = plot.x + plot.w * static_cast<float>(index) /
                                      static_cast<float>(count - 1);
-        const float value = std::clamp(series[static_cast<size_t>(index)].score, 0.0f, 100.0f);
+        const float value = std::clamp(series[static_cast<std::size_t>(index)].score,
+                                       0.0f, 100.0f);
         const float y = plot.y + plot.h * (1.0f - value / 100.0f);
         return std::pair<float, float>{x, y};
     };
 
-    // Single series: 2px accent line with a marker on the latest point.
     for (int i = 0; i + 1 < count; ++i) {
         const auto [x1, y1] = pointAt(i);
         const auto [x2, y2] = pointAt(i + 1);
@@ -135,7 +136,6 @@ void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
     const auto [lastX, lastY] = pointAt(count - 1);
     renderer.fillRect(Rect{lastX - 4, lastY - 4, 8, 8}, Theme::kAccent);
 
-    // Hover: vertical cursor plus a readout of the nearest session.
     if (plot.contains(input.mouseX(), input.mouseY())) {
         const float step = plot.w / static_cast<float>(count - 1);
         int index = static_cast<int>((input.mouseX() - plot.x) / step + 0.5f);
@@ -147,46 +147,42 @@ void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
 
         char readout[48];
         std::snprintf(readout, sizeof(readout), "Sessão %d: %.0f pontos", index + 1,
-                      series[static_cast<size_t>(index)].score);
+                      series[static_cast<std::size_t>(index)].score);
         renderer.drawText(readout, plot.x + 4, plot.y - 4.0f, 13, Theme::kText);
     }
 }
 
-bool textField(Renderer& renderer, const Input& input, TextFieldState& state,
-               const Rect& rect, int fontSize, bool numericOnly, size_t maxLength) {
-    // Apply this frame's typing.
-    for (char character : input.textTyped()) {
-        if (state.text.size() >= maxLength) break;
-        if (numericOnly && std::isdigit(static_cast<unsigned char>(character)) == 0) {
-            continue;
-        }
-        state.text += character;
-    }
-    if (input.backspacePressed() && !state.text.empty()) {
-        // Remove one UTF-8 codepoint (skip continuation bytes 10xxxxxx).
-        size_t erase = state.text.size() - 1;
-        while (erase > 0 &&
-               (static_cast<uint8_t>(state.text[erase]) & 0xC0) == 0x80) {
-            --erase;
-        }
-        state.text.erase(erase);
-    }
-
+void drawTextField(Renderer& renderer, const Rect& rect,
+                   const std::string& text, bool focused, int fontSize) {
     renderer.fillRect(rect, Theme::kPanelSoft);
-    renderer.outlineRect(rect, Theme::kGrid, 1);
+    renderer.outlineRect(rect, focused ? Theme::kAccent : Theme::kGrid,
+                         focused ? 2 : 1);
 
     const float textY = rect.y + (rect.h - renderer.lineHeight(fontSize)) * 0.5f;
-    renderer.drawText(state.text, rect.x + 10, textY, fontSize, Theme::kText);
+    renderer.drawText(text, rect.x + 10, textY, fontSize, Theme::kText);
 
-    // Blinking caret.
-    if ((SDL_GetTicks64() / 500) % 2 == 0) {
-        const float caretX =
-            rect.x + 12 + renderer.textWidth(state.text, fontSize);
-        renderer.fillRect(
-            Rect{caretX, rect.y + 7, 2, rect.h - 14}, Theme::kAccent);
+    if (focused && (SDL_GetTicks64() / 500) % 2 == 0) {
+        const float caretX = rect.x + 12 + renderer.textWidth(text, fontSize);
+        renderer.fillRect(Rect{caretX, rect.y + 7, 2, rect.h - 14}, Theme::kAccent);
     }
+}
 
-    return input.enterPressed();
+bool textField(Renderer& renderer, const Input& input, TextFieldState& state,
+               const Rect& rect, int fontSize, bool numericOnly,
+               std::size_t maxLength) {
+    TextFieldInput fieldInput;
+    fieldInput.pointerX = input.mouseX();
+    fieldInput.pointerY = input.mouseY();
+    fieldInput.primaryPressed = input.mousePressed();
+    fieldInput.confirmPressed = input.enterPressed();
+    fieldInput.cancelPressed = input.escapePressed();
+    fieldInput.backspacePressed = input.backspacePressed();
+    fieldInput.text = input.textTyped();
+
+    const bool submitted = updateTextFieldState(
+        state, fieldInput, rect, numericOnly, maxLength);
+    drawTextField(renderer, rect, state.text, state.focused, fontSize);
+    return submitted;
 }
 
 }  // namespace Widgets

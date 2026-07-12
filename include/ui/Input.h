@@ -21,6 +21,7 @@ public:
     const std::string& textTyped() const { return textTyped_; }
     bool backspacePressed() const { return backspacePressed_; }
     bool enterPressed() const { return enterPressed_; }
+    bool escapePressed() const { return escapePressed_; }
 
 private:
     float mouseX_ = 0.0f;
@@ -30,4 +31,5 @@ private:
     std::string textTyped_;
     bool backspacePressed_ = false;
     bool enterPressed_ = false;
+    bool escapePressed_ = false;
 };

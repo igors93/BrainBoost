@@ -24,9 +24,13 @@ add_executable(brainboost
     src/core/Achievements.cpp
     src/core/SaveManager.cpp
     src/games/MentalMathGame.cpp
+    src/games/MentalMathGameRender.cpp
     src/games/NumberMemoryGame.cpp
+    src/games/NumberMemoryGameRender.cpp
     src/games/ReactionTimeGame.cpp
+    src/games/ReactionTimeGameRender.cpp
     src/games/SequenceLogicGame.cpp
+    src/games/SequenceLogicGameRender.cpp
     src/ui/Renderer.cpp
     src/ui/Input.cpp
     src/ui/Widgets.cpp

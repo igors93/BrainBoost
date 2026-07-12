@@ -1,9 +1,20 @@
 #include "games/NumberMemoryGame.h"
 
-#include <cstdio>
+#include <algorithm>
+#include <cctype>
 
-#include "ui/Input.h"
-#include "ui/Renderer.h"
+namespace {
+
+Rect recallFieldRect(const Rect& area) {
+    return Rect{area.centerX() - 130.0f, area.y + 100.0f, 260.0f, 46.0f};
+}
+
+Rect confirmButtonRect(const Rect& area) {
+    const Rect field = recallFieldRect(area);
+    return Rect{area.centerX() - 110.0f, field.bottom() + 16.0f, 220.0f, 44.0f};
+}
+
+}  // namespace
 
 NumberMemoryGame::NumberMemoryGame() : rng_(std::random_device{}()) {
     startRound();
@@ -14,7 +25,6 @@ NumberMemoryGame::NumberMemoryGame(std::uint32_t seed) : rng_(seed) {
 }
 
 float NumberMemoryGame::memorizeSeconds() const {
-    // Longer sequences stay on screen a bit longer.
     return 1.2f + 0.45f * static_cast<float>(sequenceLength_);
 }
 
@@ -25,19 +35,50 @@ void NumberMemoryGame::startRound() {
         sequence_ += static_cast<char>('0' + digit(rng_));
     }
 
-    recallField_.text.clear();
+    recallText_.clear();
+    recallFocused_ = false;
     phase_ = Phase::Memorize;
     phaseTimer_ = memorizeSeconds();
 }
 
-void NumberMemoryGame::frame(float deltaSeconds, Renderer& renderer,
-                             const Input& input, const Rect& area) {
-    // --- State updates -----------------------------------------------------
+void NumberMemoryGame::applyTextInput(const GameInput& input) {
+    if (!recallFocused_) return;
+
+    for (char character : input.text) {
+        if (recallText_.size() >= 20) break;
+        if (std::isdigit(static_cast<unsigned char>(character)) != 0) {
+            recallText_ += character;
+        }
+    }
+    if (input.backspacePressed && !recallText_.empty()) recallText_.pop_back();
+}
+
+void NumberMemoryGame::submitRecall() {
+    if (recallText_.empty()) return;
+
+    lastRoundCorrect_ = (sequence_ == recallText_);
+    if (lastRoundCorrect_) ++successes_;
+    recallFocused_ = false;
+    phase_ = Phase::Feedback;
+    phaseTimer_ = 1.1f;
+}
+
+void NumberMemoryGame::update(float deltaSeconds, const GameInput& input,
+                              const Rect& area) {
+    if (phase_ == Phase::Done) return;
+
+    const float safeDelta = std::max(0.0f, deltaSeconds);
     if (phase_ == Phase::Memorize) {
-        phaseTimer_ -= deltaSeconds;
-        if (phaseTimer_ <= 0.0f) phase_ = Phase::Recall;
-    } else if (phase_ == Phase::Feedback) {
-        phaseTimer_ -= deltaSeconds;
+        phaseTimer_ -= safeDelta;
+        if (phaseTimer_ <= 0.0f) {
+            phase_ = Phase::Recall;
+            recallFocused_ = true;
+        }
+        return;
+    }
+
+    if (phase_ == Phase::Feedback) {
+        phaseTimer_ -= safeDelta;
         if (phaseTimer_ <= 0.0f) {
             ++round_;
             if (round_ >= kTotalRounds) {
@@ -47,60 +88,23 @@ void NumberMemoryGame::frame(float deltaSeconds, Renderer& renderer,
                 startRound();
             }
         }
+        return;
     }
 
-    // --- Drawing -----------------------------------------------------------
-    const float cx = area.centerX();
+    const Rect field = recallFieldRect(area);
+    const Rect confirm = confirmButtonRect(area);
+    if (input.primaryPressed) {
+        recallFocused_ = field.contains(input.pointerX, input.pointerY);
+    }
+    if (input.cancelPressed) recallFocused_ = false;
 
-    char progress[32];
-    std::snprintf(progress, sizeof(progress), "Rodada %d de %d", round_ + 1,
-                  kTotalRounds);
-    renderer.drawTextCentered(phase_ == Phase::Done ? "Fim de jogo!" : progress, cx,
-                              area.y + 16, 15, Theme::kTextMuted);
+    applyTextInput(input);
 
-    switch (phase_) {
-        case Phase::Memorize: {
-            renderer.drawTextCentered("Memorize a sequência:", cx, area.y + 60, 16,
-                                      Theme::kTextMuted);
-            renderer.drawTextCentered(sequence_, cx, area.y + 95, 42, Theme::kAccent,
-                                      true);
-            Widgets::progressBar(renderer,
-                                 Rect{cx - 160, area.y + 170, 320, 8},
-                                 phaseTimer_ / memorizeSeconds());
-            break;
-        }
-        case Phase::Recall: {
-            renderer.drawTextCentered("Digite a sequência que você viu:", cx,
-                                      area.y + 60, 16, Theme::kTextMuted);
-            const Rect field{cx - 130, area.y + 100, 260, 46};
-            const bool submitted =
-                Widgets::textField(renderer, input, recallField_, field, 22, true, 20);
-
-            const Rect confirm{cx - 110, field.bottom() + 16, 220, 44};
-            if (Widgets::button(renderer, input, confirm, "Confirmar", Theme::kButton,
-                                17) ||
-                submitted) {
-                lastRoundCorrect_ = (sequence_ == recallField_.text);
-                if (lastRoundCorrect_) ++successes_;
-                phase_ = Phase::Feedback;
-                phaseTimer_ = 1.1f;
-            }
-            break;
-        }
-        case Phase::Feedback: {
-            if (lastRoundCorrect_) {
-                renderer.drawTextCentered("Correto!", cx, area.y + 110, 24,
-                                          Theme::kSuccess, true);
-            } else {
-                char text[64];
-                std::snprintf(text, sizeof(text), "Errado! Era: %s", sequence_.c_str());
-                renderer.drawTextCentered(text, cx, area.y + 110, 24, Theme::kDanger,
-                                          true);
-            }
-            break;
-        }
-        case Phase::Done:
-            break;
+    const bool clickedConfirm =
+        input.primaryPressed && confirm.contains(input.pointerX, input.pointerY);
+    const bool keyboardConfirm = recallFocused_ && input.confirmPressed;
+    if (input.submitPressed || clickedConfirm || keyboardConfirm) {
+        submitRecall();
     }
 }
 
@@ -112,5 +116,6 @@ GameResult NumberMemoryGame::result() const {
     result.total = kTotalRounds;
     result.score = successes_ * 100 / kTotalRounds;
     result.xpEarned = successes_ * 15 + sequenceLength_ * 5;
+    result.difficulty = std::max(0, sequenceLength_ - kStartLength);
     return result;
 }

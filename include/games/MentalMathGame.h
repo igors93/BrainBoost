@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <random>
 #include <string>
 
 #include "games/Game.h"
-#include "ui/Widgets.h"
 
 // "Cálculo Mental": solve a series of arithmetic operations as fast as
 // possible. Difficulty ramps up with each question.
@@ -13,10 +13,18 @@ public:
     MentalMathGame();
     explicit MentalMathGame(std::uint32_t seed);
 
-    void frame(float deltaSeconds, Renderer& renderer, const Input& input,
-               const Rect& area) override;
+    void update(float deltaSeconds, const GameInput& input,
+                const Rect& area) override;
+    void render(Renderer& renderer, const Rect& area) const override;
     bool isFinished() const override;
     GameResult result() const override;
+
+    const std::string& currentQuestion() const { return questionText_; }
+    const std::string& currentAnswerText() const { return answerText_; }
+    int currentQuestionIndex() const { return questionIndex_; }
+    int correctCount() const { return correctCount_; }
+    bool isAwaitingAnswer() const { return phase_ == Phase::Question; }
+    bool isShowingFeedback() const { return phase_ == Phase::Feedback; }
 
 private:
     enum class Phase { Question, Feedback, Done };
@@ -24,6 +32,7 @@ private:
 
     void nextQuestion();
     void submitAnswer();
+    void applyTextInput(const GameInput& input);
 
     std::mt19937 rng_;
     Phase phase_ = Phase::Question;
@@ -32,7 +41,8 @@ private:
 
     std::string questionText_;
     int expectedAnswer_ = 0;
-    Widgets::TextFieldState answerField_;
+    std::string answerText_;
+    bool answerFocused_ = true;
     bool lastAnswerCorrect_ = false;
     float feedbackTimer_ = 0.0f;
 };

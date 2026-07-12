@@ -3,9 +3,10 @@
 #include <string>
 #include <vector>
 
+#include "core/Statistics.h"
 #include "ui/Rect.h"
 #include "ui/Theme.h"
-#include "core/Statistics.h"
+#include "ui/TextFieldModel.h"
 
 class Renderer;
 class Input;
@@ -14,6 +15,17 @@ struct GameInfo;
 // Immediate-mode widgets: each function draws the widget this frame and
 // reports interaction through its return value.
 namespace Widgets {
+
+// Preserve the existing Widgets::TextFieldState API while keeping the pure
+// state model available without Renderer or SDL dependencies.
+using ::TextFieldInput;
+using ::TextFieldState;
+using ::updateTextFieldState;
+
+// Draw-only button used by const game rendering.
+void drawButton(Renderer& renderer, const Rect& rect, const std::string& label,
+                Color background = Theme::kButton, int fontSize = 16,
+                bool hovered = false);
 
 // Returns true when clicked.
 bool button(Renderer& renderer, const Input& input, const Rect& rect,
@@ -41,11 +53,14 @@ bool gameCard(Renderer& renderer, const Input& input, const Rect& rect,
 void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
                     const ChartSeries& series);
 
-// Editable single-line text box (always focused; one per screen).
-// Returns true when Enter is pressed.
-struct TextFieldState {
-    std::string text;
-};
+// Draw-only text field used by const game rendering.
+void drawTextField(Renderer& renderer, const Rect& rect,
+                   const std::string& text, bool focused,
+                   int fontSize = 22);
+
+// Editable single-line text box. Clicking inside focuses it; clicking outside
+// or pressing Escape releases focus. Returns true when Enter is pressed while
+// the field is focused.
 bool textField(Renderer& renderer, const Input& input, TextFieldState& state,
                const Rect& rect, int fontSize = 22, bool numericOnly = false,
                size_t maxLength = 16);

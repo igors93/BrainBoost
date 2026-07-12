@@ -4,6 +4,7 @@ void Input::beginFrame() {
     mousePressed_ = false;
     backspacePressed_ = false;
     enterPressed_ = false;
+    escapePressed_ = false;
     textTyped_.clear();
 }
 
@@ -29,6 +30,7 @@ void Input::handleEvent(const SDL_Event& event) {
             break;
         case SDL_KEYDOWN:  // key repeat included, so holding backspace works
             if (event.key.keysym.sym == SDLK_BACKSPACE) backspacePressed_ = true;
+            if (event.key.keysym.sym == SDLK_ESCAPE) escapePressed_ = true;
             if (event.key.keysym.sym == SDLK_RETURN ||
                 event.key.keysym.sym == SDLK_KP_ENTER) {
                 enterPressed_ = true;

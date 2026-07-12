@@ -1,10 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <random>
 #include <string>
 
 #include "games/Game.h"
-#include "ui/Widgets.h"
 
 // "Memória Numérica": a digit sequence is shown briefly, then the player
 // must type it back. The sequence grows after every correct round.
@@ -13,10 +13,20 @@ public:
     NumberMemoryGame();
     explicit NumberMemoryGame(std::uint32_t seed);
 
-    void frame(float deltaSeconds, Renderer& renderer, const Input& input,
-               const Rect& area) override;
+    void update(float deltaSeconds, const GameInput& input,
+                const Rect& area) override;
+    void render(Renderer& renderer, const Rect& area) const override;
     bool isFinished() const override;
     GameResult result() const override;
+
+    const std::string& currentSequence() const { return sequence_; }
+    const std::string& currentRecallText() const { return recallText_; }
+    int currentRound() const { return round_; }
+    int successes() const { return successes_; }
+    int sequenceLength() const { return sequenceLength_; }
+    bool isMemorizing() const { return phase_ == Phase::Memorize; }
+    bool isAwaitingRecall() const { return phase_ == Phase::Recall; }
+    bool isShowingFeedback() const { return phase_ == Phase::Feedback; }
 
 private:
     enum class Phase { Memorize, Recall, Feedback, Done };
@@ -25,6 +35,8 @@ private:
 
     void startRound();
     float memorizeSeconds() const;
+    void applyTextInput(const GameInput& input);
+    void submitRecall();
 
     std::mt19937 rng_;
     Phase phase_ = Phase::Memorize;
@@ -33,7 +45,8 @@ private:
     int sequenceLength_ = kStartLength;
 
     std::string sequence_;
-    Widgets::TextFieldState recallField_;
+    std::string recallText_;
+    bool recallFocused_ = false;
     bool lastRoundCorrect_ = false;
     float phaseTimer_ = 0.0f;
 };

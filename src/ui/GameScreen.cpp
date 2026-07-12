@@ -3,9 +3,26 @@
 #include <cstdio>
 
 #include "app/AppContext.h"
+#include "games/GameInput.h"
 #include "ui/Input.h"
 #include "ui/Renderer.h"
 #include "ui/Widgets.h"
+
+namespace {
+
+GameInput makeGameInput(const Input& input) {
+    GameInput gameInput;
+    gameInput.pointerX = input.mouseX();
+    gameInput.pointerY = input.mouseY();
+    gameInput.primaryPressed = input.mousePressed();
+    gameInput.confirmPressed = input.enterPressed();
+    gameInput.cancelPressed = input.escapePressed();
+    gameInput.backspacePressed = input.backspacePressed();
+    gameInput.text = input.textTyped();
+    return gameInput;
+}
+
+}  // namespace
 
 void GameScreen::renderResults(AppContext& context, Renderer& renderer,
                                const Input& input, const Rect& area) {
@@ -14,11 +31,13 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     const float cx = area.centerX();
     float y = area.y + 30;
 
-    renderer.drawTextCentered("Sessão concluída!", cx, y, 24, Theme::kSuccess, true);
+    renderer.drawTextCentered("Sessão concluída!", cx, y, 24, Theme::kSuccess,
+                              true);
     y += 44;
 
     if (!context.lastSaveSucceeded) {
-        renderer.drawTextCentered(context.lastSaveError, cx, y, 14, Theme::kDanger, true);
+        renderer.drawTextCentered(context.lastSaveError, cx, y, 14,
+                                  Theme::kDanger, true);
         y += 24;
     }
 
@@ -51,7 +70,8 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     const float buttonWidth = 190.0f;
     const float spacing = 12.0f;
     if (Widgets::button(renderer, input,
-                        Rect{cx - buttonWidth - spacing * 0.5f, y, buttonWidth, 46},
+                        Rect{cx - buttonWidth - spacing * 0.5f, y, buttonWidth,
+                             46},
                         "Jogar novamente", Theme::kButton, 16)) {
         const GameInfo* info = context.registry.findById(context.activeGameId);
         if (info) context.startGame(*info);
@@ -64,25 +84,31 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     }
 }
 
-void GameScreen::render(AppContext& context, Renderer& renderer, const Input& input,
-                        const Rect& area, float deltaSeconds) {
+void GameScreen::render(AppContext& context, Renderer& renderer,
+                        const Input& input, const Rect& area,
+                        float deltaSeconds) {
     const GameInfo* info = context.registry.findById(context.activeGameId);
     if (!context.activeGame || info == nullptr) {
-        renderer.drawText("Nenhum jogo ativo.", area.x, area.y, 20, Theme::kText, true);
-        if (Widgets::button(renderer, input, Rect{area.x, area.y + 40, 190, 44},
+        renderer.drawText("Nenhum jogo ativo.", area.x, area.y, 20,
+                          Theme::kText, true);
+        if (Widgets::button(renderer, input,
+                            Rect{area.x, area.y + 40, 190, 44},
                             "Voltar ao início")) {
             context.screen = ScreenId::Home;
         }
         return;
     }
 
-    // Header: title + category on the left, exit button on the right.
-    renderer.drawText(info->title, area.x, area.y, 26, Theme::kText,
-                      true);
-    renderer.drawText(categoryName(info->category), area.x,
-                      area.y + 38, 14,
+    if (input.escapePressed()) {
+        context.closeGame(ScreenId::Home);
+        return;
+    }
+
+    renderer.drawText(info->title, area.x, area.y, 26, Theme::kText, true);
+    renderer.drawText(categoryName(info->category), area.x, area.y + 38, 14,
                       Theme::categoryColor(info->category));
-    if (Widgets::button(renderer, input, Rect{area.right() - 130, area.y, 130, 38},
+    if (Widgets::button(renderer, input,
+                        Rect{area.right() - 130, area.y, 130, 38},
                         "Sair do jogo", Theme::kButton, 15)) {
         context.closeGame(ScreenId::Home);
         return;
@@ -91,9 +117,13 @@ void GameScreen::render(AppContext& context, Renderer& renderer, const Input& in
     const Rect panel{area.x, area.y + 66, area.w, area.h - 66};
     renderer.fillRect(panel, Theme::kPanel);
 
+    if (!context.activeGame->isFinished()) {
+        context.activeGame->update(deltaSeconds, makeGameInput(input), panel);
+    }
+
     if (context.activeGame->isFinished()) {
         renderResults(context, renderer, input, panel);
     } else {
-        context.activeGame->frame(deltaSeconds, renderer, input, panel);
+        context.activeGame->render(renderer, panel);
     }
 }
