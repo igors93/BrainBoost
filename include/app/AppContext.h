@@ -1,0 +1,44 @@
+#pragma once
+
+#include <memory>
+#include <vector>
+
+#include "core/Achievements.h"
+#include "core/GameRegistry.h"
+#include "core/SaveManager.h"
+#include "core/Statistics.h"
+#include "core/UserProfile.h"
+#include "games/Game.h"
+#include "ui/ScreenId.h"
+
+// Shared application state passed to every screen. Owns the player data,
+// the game catalog and the currently running game session.
+struct AppContext {
+    UserProfile profile;
+    Statistics stats;
+    GameRegistry registry;
+    SaveManager saveManager{"save/brainboost_save.ini"};
+
+    ScreenId screen = ScreenId::Home;
+    bool quitRequested = false;
+
+    // Active game session (only valid while screen == ScreenId::Playing).
+    std::unique_ptr<Game> activeGame;
+    const GameInfo* activeGameInfo = nullptr;
+    bool resultApplied = false;
+    std::vector<const AchievementDef*> lastUnlocks;
+
+    // Loads saved progress; on first run picks a default name from $USER.
+    void loadProgress();
+    void saveProgress();
+
+    // Starts a session of `info` and switches to the Playing screen.
+    void startGame(const GameInfo& info);
+
+    // Applies the finished game's result exactly once: XP, streak,
+    // statistics, achievements, and persists everything.
+    void applyResultOnce();
+
+    // Abandons/ends the current session and returns to `fallback`.
+    void closeGame(ScreenId fallback = ScreenId::Home);
+};
