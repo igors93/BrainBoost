@@ -11,6 +11,7 @@
 class MentalMathGame : public Game {
 public:
     MentalMathGame();
+    explicit MentalMathGame(std::uint32_t seed);
 
     void frame(float deltaSeconds, Renderer& renderer, const Input& input,
                const Rect& area) override;

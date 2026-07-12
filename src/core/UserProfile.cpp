@@ -57,18 +57,34 @@ void UserProfile::fromMap(const KeyValueMap& in) {
     reset();
     if (auto it = in.find("profile.name"); it != in.end() && !it->second.empty())
         name = it->second;
-    if (auto it = in.find("profile.xp"); it != in.end())
-        xp_ = std::stoi(it->second);
-    if (auto it = in.find("profile.streak"); it != in.end())
-        streakDays_ = std::stoi(it->second);
-    if (auto it = in.find("profile.last_played_day"); it != in.end())
-        lastPlayedDay_ = std::stol(it->second);
+    if (auto it = in.find("profile.xp"); it != in.end()) {
+        try {
+            xp_ = std::stoi(it->second);
+            if (xp_ < 0) xp_ = 0;
+        } catch (...) { xp_ = 0; }
+    }
+    if (auto it = in.find("profile.streak"); it != in.end()) {
+        try {
+            streakDays_ = std::stoi(it->second);
+            if (streakDays_ < 0) streakDays_ = 0;
+        } catch (...) { streakDays_ = 0; }
+    }
+    if (auto it = in.find("profile.last_played_day"); it != in.end()) {
+        try {
+            lastPlayedDay_ = std::stol(it->second);
+            if (lastPlayedDay_ < 0) lastPlayedDay_ = 0;
+        } catch (...) { lastPlayedDay_ = 0; }
+    }
 
     if (auto it = in.find("profile.achievements"); it != in.end()) {
         std::istringstream stream(it->second);
         std::string id;
         while (std::getline(stream, id, ',')) {
-            if (!id.empty()) achievements_.push_back(id);
+            if (!id.empty()) {
+                if (std::find(achievements_.begin(), achievements_.end(), id) == achievements_.end()) {
+                    achievements_.push_back(id);
+                }
+            }
         }
     }
 

@@ -12,6 +12,10 @@ SequenceLogicGame::SequenceLogicGame() : rng_(std::random_device{}()) {
     nextRound();
 }
 
+SequenceLogicGame::SequenceLogicGame(std::uint32_t seed) : rng_(seed) {
+    nextRound();
+}
+
 void SequenceLogicGame::nextRound() {
     std::uniform_int_distribution<int> ruleDist(0, 2);
     std::uniform_int_distribution<int> startDist(1, 12);

@@ -9,6 +9,10 @@ NumberMemoryGame::NumberMemoryGame() : rng_(std::random_device{}()) {
     startRound();
 }
 
+NumberMemoryGame::NumberMemoryGame(std::uint32_t seed) : rng_(seed) {
+    startRound();
+}
+
 float NumberMemoryGame::memorizeSeconds() const {
     // Longer sequences stay on screen a bit longer.
     return 1.2f + 0.45f * static_cast<float>(sequenceLength_);

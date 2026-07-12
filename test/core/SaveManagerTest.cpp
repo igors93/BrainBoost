@@ -1,6 +1,6 @@
-#include <cassert>
 #include <iostream>
 #include <filesystem>
+#include "../TestUtils.h"
 #include "core/SaveManager.h"
 #include "core/UserProfile.h"
 #include "core/Statistics.h"
@@ -18,21 +18,21 @@ void testSaveLoad() {
     p1.unlockAchievement("test_achv");
 
     bool saved = manager.save(p1, s1);
-    assert(saved);
-    assert(std::filesystem::exists("test_dir"));
-    assert(std::filesystem::exists(testFile));
+    TEST_CHECK(saved);
+    TEST_CHECK(std::filesystem::exists("test_dir"));
+    TEST_CHECK(std::filesystem::exists(testFile));
 
     UserProfile p2;
     Statistics s2;
     bool loaded = manager.load(p2, s2);
-    assert(loaded);
+    TEST_CHECK(loaded);
 
-    assert(p2.xp() == 500);
-    assert(p2.hasAchievement("test_achv"));
+    TEST_CHECK(p2.xp() == 500);
+    TEST_CHECK(p2.hasAchievement("test_achv"));
 
     // Test saving failure (invalid path)
     SaveManager badManager("/invalid_root_dir/test.ini");
-    assert(!badManager.save(p1, s1));
+    TEST_CHECK(!badManager.save(p1, s1));
     
     // Cleanup
     std::filesystem::remove_all("test_dir");

@@ -21,6 +21,17 @@ bool SaveManager::load(UserProfile& profile, Statistics& stats) const {
         values[line.substr(0, separator)] = line.substr(separator + 1);
     }
 
+    auto versionIt = values.find("save.version");
+    int version = 0;
+    if (versionIt != values.end()) {
+        try { version = std::stoi(versionIt->second); } catch (...) {}
+    }
+
+    if (version > 1) {
+        // Unknown future version
+        return false;
+    }
+
     try {
         profile.fromMap(values);
         stats.fromMap(values);
@@ -49,6 +60,7 @@ bool SaveManager::save(const UserProfile& profile, const Statistics& stats) cons
     if (!file.is_open()) return false;
 
     file << "# BrainBoost save file\n";
+    file << "save.version=1\n";
     for (const auto& [key, value] : values) {
         file << key << '=' << value << '\n';
     }

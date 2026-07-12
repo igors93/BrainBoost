@@ -1,6 +1,7 @@
 #include "core/Statistics.h"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 void Statistics::recordResult(GameCategory category, const GameResult& result) {
@@ -39,22 +40,45 @@ void Statistics::toMap(KeyValueMap& out) const {
 
 void Statistics::fromMap(const KeyValueMap& in) {
     reset();
-    if (auto it = in.find("stats.total_games"); it != in.end())
-        totalGames_ = std::stoi(it->second);
+    if (auto it = in.find("stats.total_games"); it != in.end()) {
+        try {
+            totalGames_ = std::stoi(it->second);
+            if (totalGames_ < 0) totalGames_ = 0;
+        } catch (...) { totalGames_ = 0; }
+    }
 
     for (int i = 0; i < kCategoryCount; ++i) {
         const std::string prefix = "stats.category." + std::to_string(i);
-        if (auto it = in.find(prefix + ".skill"); it != in.end())
-            categories_[i].skill = std::stof(it->second);
-        if (auto it = in.find(prefix + ".games"); it != in.end())
-            categories_[i].gamesPlayed = std::stoi(it->second);
+        if (auto it = in.find(prefix + ".skill"); it != in.end()) {
+            try {
+                float s = std::stof(it->second);
+                if (std::isnan(s) || std::isinf(s)) s = 0.0f;
+                categories_[i].skill = std::clamp(s, 0.0f, 100.0f);
+            } catch (...) { categories_[i].skill = 0.0f; }
+        }
+        if (auto it = in.find(prefix + ".games"); it != in.end()) {
+            try {
+                int g = std::stoi(it->second);
+                categories_[i].gamesPlayed = std::max(0, g);
+            } catch (...) { categories_[i].gamesPlayed = 0; }
+        }
     }
 
     if (auto it = in.find("stats.history"); it != in.end()) {
         std::istringstream stream(it->second);
         std::string value;
         while (std::getline(stream, value, ',')) {
-            if (!value.empty()) history_.push_back(std::stof(value));
+            if (!value.empty()) {
+                try {
+                    float v = std::stof(value);
+                    if (!std::isnan(v) && !std::isinf(v)) {
+                        history_.push_back(v);
+                    }
+                } catch (...) {}
+            }
+        }
+        if (history_.size() > kMaxHistory) {
+            history_.erase(history_.begin(), history_.begin() + (history_.size() - kMaxHistory));
         }
     }
 }

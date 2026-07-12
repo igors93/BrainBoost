@@ -11,6 +11,7 @@
 class SequenceLogicGame : public Game {
 public:
     SequenceLogicGame();
+    explicit SequenceLogicGame(std::uint32_t seed);
 
     void frame(float deltaSeconds, Renderer& renderer, const Input& input,
                const Rect& area) override;

@@ -10,6 +10,10 @@ MentalMathGame::MentalMathGame() : rng_(std::random_device{}()) {
     nextQuestion();
 }
 
+MentalMathGame::MentalMathGame(std::uint32_t seed) : rng_(seed) {
+    nextQuestion();
+}
+
 void MentalMathGame::nextQuestion() {
     // Ranges grow with the question index to ramp up difficulty.
     const int level = questionIndex_ / 3;

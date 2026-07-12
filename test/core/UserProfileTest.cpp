@@ -1,30 +1,30 @@
-#include <cassert>
 #include <iostream>
 #include "core/UserProfile.h"
+#include "../TestUtils.h"
 
 void testAddXp() {
     UserProfile profile;
-    assert(profile.xp() == 0);
-    assert(profile.level() == 1);
+    TEST_CHECK(profile.xp() == 0);
+    TEST_CHECK(profile.level() == 1);
 
     profile.addXp(600);
-    assert(profile.xp() == 600);
-    assert(profile.level() == 2);
-    assert(profile.xpIntoLevel() == 100);
+    TEST_CHECK(profile.xp() == 600);
+    TEST_CHECK(profile.level() == 2);
+    TEST_CHECK(profile.xpIntoLevel() == 100);
 
     std::cout << "testAddXp passed!" << std::endl;
 }
 
 void testStreak() {
     UserProfile profile;
-    assert(profile.streakDays() == 0);
+    TEST_CHECK(profile.streakDays() == 0);
 
     profile.registerPlayToday();
-    assert(profile.streakDays() == 1);
+    TEST_CHECK(profile.streakDays() == 1);
 
     // If we call it again today, streak should still be 1.
     profile.registerPlayToday();
-    assert(profile.streakDays() == 1);
+    TEST_CHECK(profile.streakDays() == 1);
 
     std::cout << "testStreak passed!" << std::endl;
 }
@@ -40,9 +40,9 @@ void testMapConversion() {
     UserProfile p2;
     p2.fromMap(map);
 
-    assert(p2.xp() == 1200);
-    assert(p2.level() == 3);
-    assert(p2.hasAchievement("first_blood"));
+    TEST_CHECK(p2.xp() == 1200);
+    TEST_CHECK(p2.level() == 3);
+    TEST_CHECK(p2.hasAchievement("first_blood"));
 
     std::cout << "testMapConversion passed!" << std::endl;
 }
