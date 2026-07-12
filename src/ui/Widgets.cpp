@@ -96,7 +96,7 @@ bool gameCard(Renderer& renderer, const Input& input, const Rect& rect,
 }
 
 void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
-                    const std::vector<float>& values) {
+                    const ChartSeries& series) {
     const float axisWidth = 34.0f;
     const Rect plot{rect.x + axisWidth, rect.y + 8.0f, rect.w - axisWidth - 8.0f,
                     rect.h - 20.0f};
@@ -110,7 +110,7 @@ void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
         renderer.drawText(label, rect.x + 4, y - 8.0f, 12, Theme::kTextMuted);
     }
 
-    const int count = static_cast<int>(values.size());
+    const int count = static_cast<int>(series.size());
     if (count < 2) {
         renderer.drawTextCentered("Complete jogos para ver sua evolução.",
                                   plot.centerX(), plot.centerY() - 8.0f, 14,
@@ -121,7 +121,7 @@ void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
     const auto pointAt = [&](int index) {
         const float x = plot.x + plot.w * static_cast<float>(index) /
                                      static_cast<float>(count - 1);
-        const float value = std::clamp(values[static_cast<size_t>(index)], 0.0f, 100.0f);
+        const float value = std::clamp(series[static_cast<size_t>(index)].score, 0.0f, 100.0f);
         const float y = plot.y + plot.h * (1.0f - value / 100.0f);
         return std::pair<float, float>{x, y};
     };
@@ -147,7 +147,7 @@ void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
 
         char readout[48];
         std::snprintf(readout, sizeof(readout), "Sessão %d: %.0f pontos", index + 1,
-                      values[static_cast<size_t>(index)]);
+                      series[static_cast<size_t>(index)].score);
         renderer.drawText(readout, plot.x + 4, plot.y - 4.0f, 13, Theme::kText);
     }
 }

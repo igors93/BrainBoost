@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include <ctime>
 #include <string>
 
 #include "app/AppContext.h"
@@ -127,10 +128,11 @@ void HomeScreen::renderBottomPanels(AppContext& context, Renderer& renderer,
     renderer.fillRect(evolution, Theme::kPanel);
     renderer.drawText("Gráfico de Evolução", evolution.x + 16, evolution.y + 12, 16,
                       Theme::kText, true);
+    ChartSeries series = context.stats.prepareChartSeries(Statistics::FilterType::All);
     Widgets::scoreLineChart(renderer, input,
                             Rect{evolution.x + 12, evolution.y + 42,
                                  evolution.w - 24, evolution.h - 56},
-                            context.stats.history());
+                            series);
 
     // --- Recent achievements ------------------------------------------------
     const Rect recent{evolution.right() + spacing, area.y, achievementsWidth, area.h};

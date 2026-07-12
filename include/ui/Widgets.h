@@ -5,6 +5,7 @@
 
 #include "ui/Rect.h"
 #include "ui/Theme.h"
+#include "core/Statistics.h"
 
 class Renderer;
 class Input;
@@ -38,7 +39,7 @@ bool gameCard(Renderer& renderer, const Input& input, const Rect& rect,
 // Single-series score chart (values 0..100, oldest first) with gridlines and
 // a hover readout. Shows a placeholder while there is not enough data.
 void scoreLineChart(Renderer& renderer, const Input& input, const Rect& rect,
-                    const std::vector<float>& values);
+                    const ChartSeries& series);
 
 // Editable single-line text box (always focused; one per screen).
 // Returns true when Enter is pressed.

@@ -8,6 +8,10 @@ add_executable(SaveManagerTest core/SaveManagerTest.cpp ../src/core/SaveManager.
 target_include_directories(SaveManagerTest PRIVATE ../include)
 add_test(NAME SaveManagerTest COMMAND SaveManagerTest)
 
+add_executable(StatisticsTest core/StatisticsTest.cpp ../src/core/Statistics.cpp)
+target_include_directories(StatisticsTest PRIVATE ../include)
+add_test(NAME StatisticsTest COMMAND StatisticsTest)
+
 add_executable(MathGameTest games/MathGameTest.cpp ../src/games/MentalMathGame.cpp ../src/games/NumberMemoryGame.cpp ../src/games/SequenceLogicGame.cpp ../src/ui/Renderer.cpp ../src/ui/Widgets.cpp ../src/ui/Input.cpp)
 target_include_directories(MathGameTest PRIVATE ../include)
 target_link_libraries(MathGameTest PRIVATE PkgConfig::SDL2 PkgConfig::FREETYPE)

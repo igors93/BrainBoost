@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <cstdlib>
+#include <ctime>
 
 void AppContext::loadProgress() {
     if (saveManager.load(profile, stats)) return;
@@ -43,7 +44,10 @@ void AppContext::applyResultOnce() {
     const GameResult result = activeGame->result();
     profile.addXp(result.xpEarned);
     profile.registerPlayToday();
-    stats.recordResult(info->category, result);
+    
+    std::int64_t now = static_cast<std::int64_t>(std::time(nullptr));
+    stats.recordResult(info->id, info->category, result, now);
+    
     lastUnlocks = Achievements::evaluate(profile, stats);
     resultApplied = true;
 

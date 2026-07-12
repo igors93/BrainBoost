@@ -38,7 +38,7 @@ bool SaveManager::load(UserProfile& profile, Statistics& stats) const {
     } catch (const std::exception&) {
         // Corrupted save: start fresh instead of crashing.
         profile.reset();
-        stats.reset();
+        stats.resetAll();
         return false;
     }
     return true;

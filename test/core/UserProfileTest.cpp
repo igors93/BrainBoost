@@ -47,11 +47,32 @@ void testMapConversion() {
     std::cout << "testMapConversion passed!" << std::endl;
 }
 
+void testResets() {
+    UserProfile p;
+    p.addXp(1000);
+    p.unlockAchievement("first_win");
+    p.name = "Igor";
+
+    p.resetAchievementsOnly();
+    TEST_CHECK(!p.hasAchievement("first_win"));
+    TEST_CHECK(p.xp() == 1000); // XP preserved
+    TEST_CHECK(p.name == "Igor");
+
+    p.resetNameOnly();
+    TEST_CHECK(p.name == "Jogador");
+    TEST_CHECK(p.xp() == 1000);
+
+    p.reset();
+    TEST_CHECK(p.xp() == 0);
+    TEST_CHECK(p.name == "Jogador");
+}
+
 int main() {
     std::cout << "Running UserProfile tests..." << std::endl;
     testAddXp();
     testStreak();
     testMapConversion();
+    testResets();
     std::cout << "All UserProfile tests passed!" << std::endl;
     return 0;
 }

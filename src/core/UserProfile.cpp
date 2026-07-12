@@ -98,4 +98,13 @@ void UserProfile::reset() {
     streakDays_ = 0;
     lastPlayedDay_ = 0;
     achievements_.clear();
+    name = "Jogador";
+}
+
+void UserProfile::resetAchievementsOnly() {
+    achievements_.clear();
+}
+
+void UserProfile::resetNameOnly() {
+    name = "Jogador";
 }

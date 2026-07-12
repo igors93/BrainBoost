@@ -34,6 +34,8 @@ public:
     void fromMap(const KeyValueMap& in);
 
     void reset();
+    void resetAchievementsOnly();
+    void resetNameOnly();
 
 private:
     static constexpr int kXpPerLevel = 500;

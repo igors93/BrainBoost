@@ -15,7 +15,7 @@ void SettingsScreen::render(AppContext& context, Renderer& renderer,
         nameLoaded_ = true;
     }
 
-    // --- Profile -------------------------------------------------------------
+    // --- Profile ---
     const Rect profilePanel{area.x, y, area.w, 140};
     renderer.fillRect(profilePanel, Theme::kPanel);
     renderer.drawText("Perfil", profilePanel.x + 16, profilePanel.y + 12, 16,
@@ -34,34 +34,51 @@ void SettingsScreen::render(AppContext& context, Renderer& renderer,
     }
     y += 152;
 
-    // --- Data ------------------------------------------------------------------
-    const Rect dataPanel{area.x, y, area.w, 150};
+    // --- Data ---
+    const Rect dataPanel{area.x, y, area.w, area.bottom() - y};
     renderer.fillRect(dataPanel, Theme::kPanel);
-    renderer.drawText("Dados", dataPanel.x + 16, dataPanel.y + 12, 16, Theme::kText,
-                      true);
-    renderer.drawText("Progresso salvo em: " + context.saveManager.filePath(),
-                      dataPanel.x + 16, dataPanel.y + 42, 13, Theme::kTextMuted);
+    renderer.drawText("Zerar Dados", dataPanel.x + 16, dataPanel.y + 12, 16, Theme::kText, true);
 
-    const Rect resetButton{dataPanel.x + 16, dataPanel.y + 76, 220, 44};
-    if (!confirmingReset_) {
-        if (Widgets::button(renderer, input, resetButton, "Zerar progresso",
-                            Theme::kDangerButton, 15)) {
-            confirmingReset_ = true;
+    float rowY = dataPanel.y + 42;
+    const float btnWidth = 240.0f;
+    const float btnHeight = 44.0f;
+    const float spacing = 10.0f;
+
+    auto drawResetOption = [&](const std::string& label, ResetScope scope, float& currentY) {
+        if (confirmingReset_ == ResetScope::None) {
+            if (Widgets::button(renderer, input, Rect{dataPanel.x + 16, currentY, btnWidth, btnHeight}, label, Theme::kDangerButton, 15)) {
+                confirmingReset_ = scope;
+            }
+        } else if (confirmingReset_ == scope) {
+            if (Widgets::button(renderer, input, Rect{dataPanel.x + 16, currentY, btnWidth, btnHeight}, "Confirmar", rgb(0x991B1B), 15)) {
+                if (scope == ResetScope::All) {
+                    context.profile.reset();
+                    context.stats.resetAll();
+                } else if (scope == ResetScope::Statistics) {
+                    context.stats.resetStatisticsOnly();
+                } else if (scope == ResetScope::History) {
+                    context.stats.resetHistoryOnly();
+                } else if (scope == ResetScope::Achievements) {
+                    context.profile.resetAchievementsOnly();
+                } else if (scope == ResetScope::ProfileName) {
+                    context.profile.resetNameOnly();
+                    nameField_.text = context.profile.name;
+                }
+                context.saveProgress();
+                confirmingReset_ = ResetScope::None;
+            }
+            if (Widgets::button(renderer, input, Rect{dataPanel.x + 16 + btnWidth + 10, currentY, 130, btnHeight}, "Cancelar")) {
+                confirmingReset_ = ResetScope::None;
+            }
+            renderer.drawText("Tem certeza? Esta ação não pode ser desfeita.", dataPanel.x + 16, currentY + btnHeight + 8, 13, Theme::kDanger);
+            currentY += 20; // extra space for warning
         }
-    } else {
-        if (Widgets::button(renderer, input, resetButton, "Confirmar exclusão",
-                            rgb(0x991B1B), 15)) {
-            context.profile.reset();
-            context.stats.reset();
-            context.saveProgress();
-            confirmingReset_ = false;
-        }
-        if (Widgets::button(renderer, input,
-                            Rect{resetButton.right() + 10, resetButton.y, 130, 44},
-                            "Cancelar")) {
-            confirmingReset_ = false;
-        }
-        renderer.drawText("Isso apaga XP, estatísticas e conquistas. Não pode ser desfeito.",
-                          resetButton.x, resetButton.bottom() + 8, 13, Theme::kDanger);
-    }
+        currentY += btnHeight + spacing;
+    };
+
+    drawResetOption("Zerar tudo", ResetScope::All, rowY);
+    drawResetOption("Zerar apenas estatísticas", ResetScope::Statistics, rowY);
+    drawResetOption("Zerar apenas histórico", ResetScope::History, rowY);
+    drawResetOption("Zerar apenas conquistas", ResetScope::Achievements, rowY);
+    drawResetOption("Restaurar nome padrão", ResetScope::ProfileName, rowY);
 }

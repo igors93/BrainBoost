@@ -41,10 +41,12 @@ void StatsScreen::render(AppContext& context, Renderer& renderer, const Input& i
     renderer.fillRect(chartPanel, Theme::kPanel);
     renderer.drawText("Evolução das pontuações", chartPanel.x + 16, chartPanel.y + 12,
                       16, Theme::kText, true);
+    
+    ChartSeries series = context.stats.prepareChartSeries(Statistics::FilterType::All);
     Widgets::scoreLineChart(renderer, input,
                             Rect{chartPanel.x + 12, chartPanel.y + 42,
                                  chartPanel.w - 24, chartPanel.h - 56},
-                            context.stats.history());
+                            series);
     y += chartHeight + 12;
 
     // Per-category breakdown.
