@@ -1,30 +1,63 @@
 #include "core/UserProfile.h"
 
 #include <algorithm>
-#include <chrono>
 #include <ctime>
 #include <sstream>
 
 namespace {
 
-long daysSinceEpoch() {
+std::int64_t daysSinceEpoch() {
     const std::time_t now = std::time(nullptr);
     const std::tm* local = std::localtime(&now);
-    int y = local->tm_year + 1900;
-    int m = local->tm_mon + 1;
-    int d = local->tm_mday;
-    if (m < 3) { y -= 1; m += 12; }
-    return 365L * y + y / 4 - y / 100 + y / 400 + (153 * m - 457) / 5 + d - 306;
+    if (local == nullptr) return 0;
+
+    int year = local->tm_year + 1900;
+    int month = local->tm_mon + 1;
+    const int day = local->tm_mday;
+    if (month < 3) {
+        --year;
+        month += 12;
+    }
+    return 365LL * year + year / 4 - year / 100 + year / 400 +
+           (153LL * month - 457) / 5 + day - 306;
+}
+
+bool isSafeAchievementId(const std::string& id) {
+    return !id.empty() && id.find_first_of(",\r\n=") == std::string::npos;
+}
+
+std::int64_t parseNonNegativeInt64(const std::string& value,
+                                   std::int64_t fallback,
+                                   std::int64_t maximum) {
+    try {
+        std::size_t parsed = 0;
+        const long long result = std::stoll(value, &parsed, 10);
+        if (parsed != value.size()) return fallback;
+        return std::clamp<std::int64_t>(result, 0, maximum);
+    } catch (...) {
+        return fallback;
+    }
 }
 
 }  // namespace
 
+void UserProfile::addXp(std::int64_t amount) {
+    if (amount <= 0 || xp_ >= kMaxXp) return;
+
+    const std::int64_t remaining = static_cast<std::int64_t>(kMaxXp) - xp_;
+    if (amount >= remaining) {
+        xp_ = kMaxXp;
+        return;
+    }
+    xp_ += static_cast<int>(amount);
+}
+
 void UserProfile::registerPlayToday() {
-    const long today = daysSinceEpoch();
-    if (lastPlayedDay_ == today) return;
+    const std::int64_t today = daysSinceEpoch();
+    if (today <= 0 || lastPlayedDay_ == today) return;
 
     if (lastPlayedDay_ == today - 1) {
-        ++streakDays_;
+        if (streakDays_ < std::numeric_limits<int>::max()) ++streakDays_;
     } else {
         streakDays_ = 1;
     }
@@ -36,7 +69,7 @@ bool UserProfile::hasAchievement(const std::string& id) const {
 }
 
 void UserProfile::unlockAchievement(const std::string& id) {
-    if (!hasAchievement(id)) achievements_.push_back(id);
+    if (isSafeAchievementId(id) && !hasAchievement(id)) achievements_.push_back(id);
 }
 
 void UserProfile::toMap(KeyValueMap& out) const {
@@ -46,7 +79,7 @@ void UserProfile::toMap(KeyValueMap& out) const {
     out["profile.last_played_day"] = std::to_string(lastPlayedDay_);
 
     std::ostringstream joined;
-    for (size_t i = 0; i < achievements_.size(); ++i) {
+    for (std::size_t i = 0; i < achievements_.size(); ++i) {
         if (i > 0) joined << ',';
         joined << achievements_[i];
     }
@@ -55,42 +88,35 @@ void UserProfile::toMap(KeyValueMap& out) const {
 
 void UserProfile::fromMap(const KeyValueMap& in) {
     reset();
-    if (auto it = in.find("profile.name"); it != in.end() && !it->second.empty())
-        name = it->second;
-    if (auto it = in.find("profile.xp"); it != in.end()) {
-        try {
-            xp_ = std::stoi(it->second);
-            if (xp_ < 0) xp_ = 0;
-        } catch (...) { xp_ = 0; }
-    }
-    if (auto it = in.find("profile.streak"); it != in.end()) {
-        try {
-            streakDays_ = std::stoi(it->second);
-            if (streakDays_ < 0) streakDays_ = 0;
-        } catch (...) { streakDays_ = 0; }
-    }
-    if (auto it = in.find("profile.last_played_day"); it != in.end()) {
-        try {
-            lastPlayedDay_ = std::stol(it->second);
-            if (lastPlayedDay_ < 0) lastPlayedDay_ = 0;
-        } catch (...) { lastPlayedDay_ = 0; }
+
+    if (const auto it = in.find("profile.name"); it != in.end() && !it->second.empty()) {
+        name = it->second.substr(0, 64);
     }
 
-    if (auto it = in.find("profile.achievements"); it != in.end()) {
+    if (const auto it = in.find("profile.xp"); it != in.end()) {
+        xp_ = static_cast<int>(parseNonNegativeInt64(it->second, 0, kMaxXp));
+    }
+    if (const auto it = in.find("profile.streak"); it != in.end()) {
+        streakDays_ = static_cast<int>(parseNonNegativeInt64(
+            it->second, 0, std::numeric_limits<int>::max()));
+    }
+    if (const auto it = in.find("profile.last_played_day"); it != in.end()) {
+        lastPlayedDay_ = parseNonNegativeInt64(
+            it->second, 0, std::numeric_limits<std::int64_t>::max());
+    }
+
+    if (const auto it = in.find("profile.achievements"); it != in.end()) {
         std::istringstream stream(it->second);
         std::string id;
         while (std::getline(stream, id, ',')) {
-            if (!id.empty()) {
-                if (std::find(achievements_.begin(), achievements_.end(), id) == achievements_.end()) {
-                    achievements_.push_back(id);
-                }
-            }
+            unlockAchievement(id);
         }
     }
 
-    // A break longer than one day resets the streak on the next launch.
-    const long today = daysSinceEpoch();
-    if (lastPlayedDay_ != 0 && today - lastPlayedDay_ > 1) streakDays_ = 0;
+    const std::int64_t today = daysSinceEpoch();
+    if (today > 0 && lastPlayedDay_ != 0 && today - lastPlayedDay_ > 1) {
+        streakDays_ = 0;
+    }
 }
 
 void UserProfile::reset() {
@@ -101,10 +127,6 @@ void UserProfile::reset() {
     name = "Jogador";
 }
 
-void UserProfile::resetAchievementsOnly() {
-    achievements_.clear();
-}
+void UserProfile::resetAchievementsOnly() { achievements_.clear(); }
 
-void UserProfile::resetNameOnly() {
-    name = "Jogador";
-}
+void UserProfile::resetNameOnly() { name = "Jogador"; }

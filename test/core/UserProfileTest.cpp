@@ -1,8 +1,11 @@
+#include <cstdint>
 #include <iostream>
-#include "core/UserProfile.h"
-#include "../TestUtils.h"
+#include <limits>
 
-void testAddXp() {
+#include "../TestUtils.h"
+#include "core/UserProfile.h"
+
+void testXpProgressionAndSaturation() {
     UserProfile profile;
     TEST_CHECK(profile.xp() == 0);
     TEST_CHECK(profile.level() == 1);
@@ -12,67 +15,67 @@ void testAddXp() {
     TEST_CHECK(profile.level() == 2);
     TEST_CHECK(profile.xpIntoLevel() == 100);
 
-    std::cout << "testAddXp passed!" << std::endl;
+    profile.addXp(-500);
+    TEST_CHECK(profile.xp() == 600);
+
+    profile.addXp(std::numeric_limits<std::int64_t>::max());
+    TEST_CHECK(profile.xp() == profile.maxXp());
+    profile.addXp(1);
+    TEST_CHECK(profile.xp() == profile.maxXp());
 }
 
 void testStreak() {
     UserProfile profile;
+    profile.registerPlayToday();
+    TEST_CHECK(profile.streakDays() == 1);
+    profile.registerPlayToday();
+    TEST_CHECK(profile.streakDays() == 1);
+}
+
+void testValidatedMapConversion() {
+    KeyValueMap values;
+    values["profile.name"] = "Igor";
+    values["profile.xp"] = "999999999999999999999999";
+    values["profile.streak"] = "-7";
+    values["profile.last_played_day"] = "invalid";
+    values["profile.achievements"] = "first_win,first_win,bad=id,second_win";
+
+    UserProfile profile;
+    profile.fromMap(values);
+    TEST_CHECK(profile.name == "Igor");
+    TEST_CHECK(profile.xp() == 0);  // Out-of-range input is rejected.
     TEST_CHECK(profile.streakDays() == 0);
-
-    profile.registerPlayToday();
-    TEST_CHECK(profile.streakDays() == 1);
-
-    // If we call it again today, streak should still be 1.
-    profile.registerPlayToday();
-    TEST_CHECK(profile.streakDays() == 1);
-
-    std::cout << "testStreak passed!" << std::endl;
+    TEST_CHECK(profile.achievements().size() == 2);
+    TEST_CHECK(profile.hasAchievement("first_win"));
+    TEST_CHECK(profile.hasAchievement("second_win"));
 }
 
-void testMapConversion() {
-    UserProfile p1;
-    p1.addXp(1200);
-    p1.unlockAchievement("first_blood");
+void testResetScopes() {
+    UserProfile profile;
+    profile.addXp(1000);
+    profile.unlockAchievement("first_win");
+    profile.name = "Igor";
 
-    KeyValueMap map;
-    p1.toMap(map);
+    profile.resetAchievementsOnly();
+    TEST_CHECK(!profile.hasAchievement("first_win"));
+    TEST_CHECK(profile.xp() == 1000);
+    TEST_CHECK(profile.name == "Igor");
 
-    UserProfile p2;
-    p2.fromMap(map);
+    profile.resetNameOnly();
+    TEST_CHECK(profile.name == "Jogador");
+    TEST_CHECK(profile.xp() == 1000);
 
-    TEST_CHECK(p2.xp() == 1200);
-    TEST_CHECK(p2.level() == 3);
-    TEST_CHECK(p2.hasAchievement("first_blood"));
-
-    std::cout << "testMapConversion passed!" << std::endl;
-}
-
-void testResets() {
-    UserProfile p;
-    p.addXp(1000);
-    p.unlockAchievement("first_win");
-    p.name = "Igor";
-
-    p.resetAchievementsOnly();
-    TEST_CHECK(!p.hasAchievement("first_win"));
-    TEST_CHECK(p.xp() == 1000); // XP preserved
-    TEST_CHECK(p.name == "Igor");
-
-    p.resetNameOnly();
-    TEST_CHECK(p.name == "Jogador");
-    TEST_CHECK(p.xp() == 1000);
-
-    p.reset();
-    TEST_CHECK(p.xp() == 0);
-    TEST_CHECK(p.name == "Jogador");
+    profile.reset();
+    TEST_CHECK(profile.xp() == 0);
+    TEST_CHECK(profile.name == "Jogador");
 }
 
 int main() {
-    std::cout << "Running UserProfile tests..." << std::endl;
-    testAddXp();
+    std::cout << "Running UserProfileTest...\n";
+    testXpProgressionAndSaturation();
     testStreak();
-    testMapConversion();
-    testResets();
-    std::cout << "All UserProfile tests passed!" << std::endl;
+    testValidatedMapConversion();
+    testResetScopes();
+    std::cout << "All UserProfile tests passed!\n";
     return 0;
 }

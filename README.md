@@ -1,5 +1,6 @@
 # BrainBoost — Treinamento Cognitivo
 
+![Dashboard do BrainBoost](assets/img/dashboard.png)
 Aplicativo desktop de treinamento cerebral escrito em **C++17**, com interface
 gráfica **100% própria** (nenhuma biblioteca de UI de terceiros no repositório):
 o desenho é feito direto com **SDL2** e o texto é renderizado com **FreeType**,

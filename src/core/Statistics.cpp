@@ -1,95 +1,274 @@
 #include "core/Statistics.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstddef>
 #include <cmath>
+#include <ctime>
+#include <limits>
 #include <sstream>
 #include <unordered_set>
+#include <vector>
 
-void Statistics::recordResult(const std::string& gameId, GameCategory category, const GameResult& result, std::int64_t timestamp) {
-    CategoryStats& catStats = categories_[static_cast<int>(category)];
-    if (catStats.gamesPlayed == 0) {
-        catStats.skill = static_cast<float>(result.score);
-    } else {
-        catStats.skill = catStats.skill * 0.7f + static_cast<float>(result.score) * 0.3f;
+namespace {
+
+bool isValidCategory(GameCategory category) {
+    const int index = static_cast<int>(category);
+    return index >= 0 && index < kCategoryCount;
+}
+
+bool isSafeGameId(const std::string& gameId) {
+    if (gameId.empty() || gameId.size() > 80) return false;
+    for (const unsigned char character : gameId) {
+        const bool allowed = std::isalnum(character) != 0 || character == '_' ||
+                             character == '-';
+        if (!allowed) return false;
     }
-    ++catStats.gamesPlayed;
-    ++totalGames_;
+    return true;
+}
 
-    GameStats& gStats = gameStats_[gameId];
-    if (gStats.sessions == 0) {
-        gStats.bestScore = result.score;
-        gStats.averageScore = static_cast<float>(result.score);
-    } else {
-        gStats.bestScore = std::max(gStats.bestScore, result.score);
-        gStats.averageScore = (gStats.averageScore * gStats.sessions + result.score) / (gStats.sessions + 1);
+int saturatingAdd(int left, int right) {
+    if (right <= 0) return left;
+    if (left > std::numeric_limits<int>::max() - right) {
+        return std::numeric_limits<int>::max();
     }
-    gStats.mostRecentScore = result.score;
-    gStats.totalCorrect += result.correct;
-    gStats.totalAttempts += result.total;
-    ++gStats.sessions;
+    return left + right;
+}
 
+bool parseInt(const std::string& text, int& output) {
+    try {
+        std::size_t parsed = 0;
+        const long long value = std::stoll(text, &parsed, 10);
+        if (parsed != text.size() || value < std::numeric_limits<int>::min() ||
+            value > std::numeric_limits<int>::max()) {
+            return false;
+        }
+        output = static_cast<int>(value);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool parseInt64(const std::string& text, std::int64_t& output) {
+    try {
+        std::size_t parsed = 0;
+        const long long value = std::stoll(text, &parsed, 10);
+        if (parsed != text.size()) return false;
+        output = static_cast<std::int64_t>(value);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool parseFiniteFloat(const std::string& text, float& output) {
+    try {
+        std::size_t parsed = 0;
+        const float value = std::stof(text, &parsed);
+        if (parsed != text.size() || !std::isfinite(value)) return false;
+        output = value;
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+std::vector<std::string> split(const std::string& value, char delimiter) {
+    std::vector<std::string> parts;
+    std::istringstream stream(value);
+    std::string part;
+    while (std::getline(stream, part, delimiter)) parts.push_back(part);
+    return parts;
+}
+
+bool localTime(std::int64_t timestamp, std::tm& output) {
+    if (timestamp < 0) return false;
+    const std::time_t raw = static_cast<std::time_t>(timestamp);
+    if (static_cast<std::int64_t>(raw) != timestamp) return false;
+    const std::tm* converted = std::localtime(&raw);
+    if (converted == nullptr) return false;
+    output = *converted;
+    return true;
+}
+
+std::int64_t startOfLocalDay(std::int64_t timestamp) {
+    std::tm local{};
+    if (!localTime(timestamp, local)) return timestamp - timestamp % 86400;
+    local.tm_hour = 0;
+    local.tm_min = 0;
+    local.tm_sec = 0;
+    local.tm_isdst = -1;
+    return static_cast<std::int64_t>(std::mktime(&local));
+}
+
+std::int64_t shiftLocalDays(std::int64_t localDayStart, int days) {
+    std::tm local{};
+    if (!localTime(localDayStart, local)) {
+        return localDayStart + static_cast<std::int64_t>(days) * 86400;
+    }
+    local.tm_mday += days;
+    local.tm_isdst = -1;
+    return static_cast<std::int64_t>(std::mktime(&local));
+}
+
+std::int64_t localDayKey(std::int64_t timestamp) {
+    std::tm local{};
+    if (!localTime(timestamp, local)) return timestamp / 86400;
+    return static_cast<std::int64_t>(local.tm_year + 1900) * 10000 +
+           static_cast<std::int64_t>(local.tm_mon + 1) * 100 + local.tm_mday;
+}
+
+SessionRecord sanitizedRecord(const std::string& gameId, GameCategory category,
+                              const GameResult& result, std::int64_t timestamp) {
     SessionRecord record;
     record.gameId = gameId;
     record.category = category;
-    record.timestamp = timestamp;
-    record.score = result.score;
-    record.correct = result.correct;
-    record.total = result.total;
-    record.difficulty = 0;
-    record.durationSeconds = 0;
-
-    history_.push_back(record);
-    if (history_.size() > kMaxHistory) history_.erase(history_.begin());
+    record.timestamp = std::max<std::int64_t>(0, timestamp);
+    record.score = std::clamp(result.score, 0, 100);
+    record.total = std::max(0, result.total);
+    record.correct = std::clamp(result.correct, 0, record.total);
+    record.difficulty = std::max(0, result.difficulty);
+    record.durationSeconds = std::max(0, result.durationSeconds);
+    return record;
 }
 
-SummaryStats Statistics::summaryForPeriod(std::int64_t startTimestamp, std::int64_t endTimestamp) const {
-    SummaryStats s;
-    std::unordered_set<int> cats;
-    std::unordered_set<std::int64_t> days;
-    for (const auto& rec : history_) {
-        if (rec.timestamp >= startTimestamp && rec.timestamp <= endTimestamp) {
-            s.sessionsCompleted++;
-            s.averageScore += rec.score;
-            s.totalTrainingTimeSeconds += rec.durationSeconds;
-            cats.insert(static_cast<int>(rec.category));
-            // Using a simple rough grouping for days (GMT-based is enough for summaries).
-            days.insert(rec.timestamp / 86400); 
-        }
+bool parseSessionRecord(const std::string& serialized, SessionRecord& record) {
+    const std::vector<std::string> fields = split(serialized, ',');
+    if (fields.size() != 8 || !isSafeGameId(fields[0])) return false;
+
+    int categoryValue = 0;
+    int score = 0;
+    int correct = 0;
+    int total = 0;
+    int difficulty = 0;
+    int duration = 0;
+    std::int64_t timestamp = 0;
+
+    if (!parseInt(fields[1], categoryValue) || categoryValue < 0 ||
+        categoryValue >= kCategoryCount || !parseInt64(fields[2], timestamp) ||
+        timestamp < 0 || !parseInt(fields[3], score) || !parseInt(fields[4], correct) ||
+        !parseInt(fields[5], total) || !parseInt(fields[6], difficulty) ||
+        !parseInt(fields[7], duration)) {
+        return false;
     }
-    if (s.sessionsCompleted > 0) {
-        s.averageScore /= s.sessionsCompleted;
+
+    record.gameId = fields[0];
+    record.category = static_cast<GameCategory>(categoryValue);
+    record.timestamp = timestamp;
+    record.score = std::clamp(score, 0, 100);
+    record.total = std::max(0, total);
+    record.correct = std::clamp(correct, 0, record.total);
+    record.difficulty = std::max(0, difficulty);
+    record.durationSeconds = std::max(0, duration);
+    return true;
+}
+
+}  // namespace
+
+void Statistics::recordResult(const std::string& gameId, GameCategory category,
+                              const GameResult& result, std::int64_t timestamp) {
+    if (!isSafeGameId(gameId) || !isValidCategory(category)) return;
+
+    const SessionRecord record = sanitizedRecord(gameId, category, result, timestamp);
+    CategoryStats& categoryStats = categories_[static_cast<int>(category)];
+    if (categoryStats.gamesPlayed == 0 || !std::isfinite(categoryStats.skill)) {
+        categoryStats.skill = static_cast<float>(record.score);
+    } else {
+        categoryStats.skill = std::clamp(
+            categoryStats.skill * 0.7f + static_cast<float>(record.score) * 0.3f,
+            0.0f, 100.0f);
     }
-    s.categoriesTrained = cats.size();
-    s.activeDays = days.size();
-    return s;
+    categoryStats.gamesPlayed = saturatingAdd(categoryStats.gamesPlayed, 1);
+    totalGames_ = saturatingAdd(totalGames_, 1);
+
+    GameStats& gameStats = gameStats_[gameId];
+    if (gameStats.sessions == 0 || !std::isfinite(gameStats.averageScore)) {
+        gameStats.bestScore = record.score;
+        gameStats.averageScore = static_cast<float>(record.score);
+    } else {
+        gameStats.bestScore = std::max(gameStats.bestScore, record.score);
+        const double accumulated =
+            static_cast<double>(gameStats.averageScore) * gameStats.sessions;
+        gameStats.averageScore = static_cast<float>(
+            (accumulated + record.score) / (static_cast<double>(gameStats.sessions) + 1.0));
+    }
+    gameStats.mostRecentScore = record.score;
+    gameStats.totalCorrect = saturatingAdd(gameStats.totalCorrect, record.correct);
+    gameStats.totalAttempts = saturatingAdd(gameStats.totalAttempts, record.total);
+    gameStats.bestDifficulty = std::max(gameStats.bestDifficulty, record.difficulty);
+    gameStats.sessions = saturatingAdd(gameStats.sessions, 1);
+
+    history_.push_back(record);
+    if (history_.size() > kMaxHistory) {
+        history_.erase(history_.begin(), history_.begin() +
+                                             static_cast<std::ptrdiff_t>(history_.size() -
+                                                                         kMaxHistory));
+    }
+}
+
+SummaryStats Statistics::summaryForPeriod(std::int64_t startTimestamp,
+                                          std::int64_t endTimestamp) const {
+    SummaryStats summary;
+    if (startTimestamp > endTimestamp) return summary;
+
+    std::unordered_set<int> categories;
+    std::unordered_set<std::int64_t> activeDays;
+    double scoreTotal = 0.0;
+
+    for (const SessionRecord& record : history_) {
+        if (record.timestamp < startTimestamp || record.timestamp > endTimestamp) continue;
+
+        summary.sessionsCompleted = saturatingAdd(summary.sessionsCompleted, 1);
+        scoreTotal += record.score;
+        summary.totalTrainingTimeSeconds =
+            saturatingAdd(summary.totalTrainingTimeSeconds, record.durationSeconds);
+        categories.insert(static_cast<int>(record.category));
+        activeDays.insert(localDayKey(record.timestamp));
+    }
+
+    if (summary.sessionsCompleted > 0) {
+        summary.averageScore =
+            static_cast<float>(scoreTotal / static_cast<double>(summary.sessionsCompleted));
+    }
+    summary.categoriesTrained = static_cast<int>(categories.size());
+    summary.activeDays = static_cast<int>(activeDays.size());
+    return summary;
 }
 
 SummaryStats Statistics::dailySummary(std::int64_t now) const {
-    return summaryForPeriod(now - 86400, now);
+    const std::int64_t start = startOfLocalDay(now);
+    return summaryForPeriod(start, shiftLocalDays(start, 1) - 1);
 }
 
 SummaryStats Statistics::weeklySummary(std::int64_t now) const {
-    return summaryForPeriod(now - 7 * 86400, now);
+    const std::int64_t today = startOfLocalDay(now);
+    return summaryForPeriod(shiftLocalDays(today, -6), shiftLocalDays(today, 1) - 1);
 }
 
 SummaryStats Statistics::monthlySummary(std::int64_t now) const {
-    return summaryForPeriod(now - 30 * 86400, now);
+    const std::int64_t today = startOfLocalDay(now);
+    return summaryForPeriod(shiftLocalDays(today, -29), shiftLocalDays(today, 1) - 1);
 }
 
-ChartSeries Statistics::prepareChartSeries(FilterType filter, const std::string& filterValue, std::int64_t now) const {
+ChartSeries Statistics::prepareChartSeries(FilterType filter,
+                                           const std::string& filterValue,
+                                           std::int64_t now) const {
     ChartSeries series;
-    for (const auto& rec : history_) {
-        bool match = true;
-        if (filter == FilterType::Game && rec.gameId != filterValue) match = false;
-        if (filter == FilterType::Category && std::to_string(static_cast<int>(rec.category)) != filterValue) match = false;
-        if (filter == FilterType::Recent && (now - rec.timestamp > 30 * 86400)) match = false;
-        if (match) {
-            ChartPoint p;
-            p.timestamp = rec.timestamp;
-            p.score = static_cast<float>(rec.score);
-            p.gameId = rec.gameId;
-            p.category = rec.category;
-            series.push_back(p);
+    const std::int64_t recentStart =
+        filter == FilterType::Recent ? shiftLocalDays(startOfLocalDay(now), -29) : 0;
+
+    for (const SessionRecord& record : history_) {
+        bool matches = true;
+        if (filter == FilterType::Game) matches = record.gameId == filterValue;
+        if (filter == FilterType::Category) {
+            matches = std::to_string(static_cast<int>(record.category)) == filterValue;
+        }
+        if (filter == FilterType::Recent) matches = record.timestamp >= recentStart;
+
+        if (matches) {
+            series.push_back({record.timestamp, static_cast<float>(record.score),
+                              record.gameId, record.category});
         }
     }
     return series;
@@ -98,118 +277,128 @@ ChartSeries Statistics::prepareChartSeries(FilterType filter, const std::string&
 void Statistics::toMap(KeyValueMap& out) const {
     out["stats.total_games"] = std::to_string(totalGames_);
 
-    for (int i = 0; i < kCategoryCount; ++i) {
-        const std::string prefix = "stats.category." + std::to_string(i);
-        out[prefix + ".skill"] = std::to_string(categories_[i].skill);
-        out[prefix + ".games"] = std::to_string(categories_[i].gamesPlayed);
+    for (int index = 0; index < kCategoryCount; ++index) {
+        const std::string prefix = "stats.category." + std::to_string(index);
+        out[prefix + ".skill"] = std::to_string(categories_[index].skill);
+        out[prefix + ".games"] = std::to_string(categories_[index].gamesPlayed);
     }
-    
-    for (const auto& [id, gs] : gameStats_) {
-        const std::string prefix = "stats.game." + id;
-        out[prefix + ".sessions"] = std::to_string(gs.sessions);
-        out[prefix + ".bestScore"] = std::to_string(gs.bestScore);
-        out[prefix + ".averageScore"] = std::to_string(gs.averageScore);
-        out[prefix + ".mostRecentScore"] = std::to_string(gs.mostRecentScore);
-        out[prefix + ".totalCorrect"] = std::to_string(gs.totalCorrect);
-        out[prefix + ".totalAttempts"] = std::to_string(gs.totalAttempts);
-        out[prefix + ".bestDifficulty"] = std::to_string(gs.bestDifficulty);
+
+    for (const auto& [gameId, stats] : gameStats_) {
+        if (!isSafeGameId(gameId)) continue;
+        const std::string prefix = "stats.game." + gameId;
+        out[prefix + ".sessions"] = std::to_string(stats.sessions);
+        out[prefix + ".bestScore"] = std::to_string(stats.bestScore);
+        out[prefix + ".averageScore"] = std::to_string(stats.averageScore);
+        out[prefix + ".mostRecentScore"] = std::to_string(stats.mostRecentScore);
+        out[prefix + ".totalCorrect"] = std::to_string(stats.totalCorrect);
+        out[prefix + ".totalAttempts"] = std::to_string(stats.totalAttempts);
+        out[prefix + ".bestDifficulty"] = std::to_string(stats.bestDifficulty);
     }
 
     std::ostringstream joined;
-    for (size_t i = 0; i < history_.size(); ++i) {
-        if (i > 0) joined << '|';
-        const auto& r = history_[i];
-        joined << r.gameId << ',' 
-               << static_cast<int>(r.category) << ','
-               << r.timestamp << ','
-               << r.score << ','
-               << r.correct << ','
-               << r.total << ','
-               << r.difficulty << ','
-               << r.durationSeconds;
+    bool first = true;
+    for (const SessionRecord& record : history_) {
+        if (!isSafeGameId(record.gameId) || !isValidCategory(record.category)) continue;
+        if (!first) joined << '|';
+        first = false;
+        joined << record.gameId << ',' << static_cast<int>(record.category) << ','
+               << record.timestamp << ',' << record.score << ',' << record.correct << ','
+               << record.total << ',' << record.difficulty << ',' << record.durationSeconds;
     }
     out["stats.history"] = joined.str();
 }
 
 void Statistics::fromMap(const KeyValueMap& in) {
     resetAll();
-    
-    if (auto it = in.find("stats.total_games"); it != in.end()) {
-        try { totalGames_ = std::max(0, std::stoi(it->second)); } catch (...) {}
+
+    if (const auto it = in.find("stats.total_games"); it != in.end()) {
+        int value = 0;
+        if (parseInt(it->second, value)) totalGames_ = std::max(0, value);
     }
 
-    for (int i = 0; i < kCategoryCount; ++i) {
-        const std::string prefix = "stats.category." + std::to_string(i);
-        if (auto it = in.find(prefix + ".skill"); it != in.end()) {
-            try { categories_[i].skill = std::clamp(std::stof(it->second), 0.0f, 100.0f); } catch (...) {}
-        }
-        if (auto it = in.find(prefix + ".games"); it != in.end()) {
-            try { categories_[i].gamesPlayed = std::max(0, std::stoi(it->second)); } catch (...) {}
-        }
-    }
-    
-    for (const auto& [k, v] : in) {
-        if (k.find("stats.game.") == 0) {
-            size_t dotPos = k.find('.', 11);
-            if (dotPos != std::string::npos) {
-                std::string gameId = k.substr(11, dotPos - 11);
-                std::string field = k.substr(dotPos + 1);
-                auto& gs = gameStats_[gameId];
-                try {
-                    if (field == "sessions") gs.sessions = std::max(0, std::stoi(v));
-                    else if (field == "bestScore") gs.bestScore = std::max(0, std::stoi(v));
-                    else if (field == "averageScore") gs.averageScore = std::clamp(std::stof(v), 0.0f, 100.0f);
-                    else if (field == "mostRecentScore") gs.mostRecentScore = std::max(0, std::stoi(v));
-                    else if (field == "totalCorrect") gs.totalCorrect = std::max(0, std::stoi(v));
-                    else if (field == "totalAttempts") gs.totalAttempts = std::max(0, std::stoi(v));
-                    else if (field == "bestDifficulty") gs.bestDifficulty = std::max(0, std::stoi(v));
-                } catch (...) {}
+    for (int index = 0; index < kCategoryCount; ++index) {
+        const std::string prefix = "stats.category." + std::to_string(index);
+        if (const auto it = in.find(prefix + ".skill"); it != in.end()) {
+            float skill = 0.0f;
+            if (parseFiniteFloat(it->second, skill)) {
+                categories_[index].skill = std::clamp(skill, 0.0f, 100.0f);
             }
         }
+        if (const auto it = in.find(prefix + ".games"); it != in.end()) {
+            int games = 0;
+            if (parseInt(it->second, games)) categories_[index].gamesPlayed = std::max(0, games);
+        }
     }
 
-    if (auto it = in.find("stats.history"); it != in.end()) {
-        if (it->second.find('|') == std::string::npos && it->second.find(',') != std::string::npos && it->second.find_first_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") == std::string::npos) {
-            std::istringstream stream(it->second);
-            std::string value;
-            std::int64_t dummyTs = 0; 
-            while (std::getline(stream, value, ',')) {
-                if (!value.empty()) {
-                    try {
-                        float v = std::stof(value);
-                        if (!std::isnan(v) && !std::isinf(v)) {
-                            SessionRecord r;
-                            r.gameId = "legacy";
-                            r.score = static_cast<int>(v);
-                            r.timestamp = dummyTs++;
-                            history_.push_back(r);
-                        }
-                    } catch (...) {}
+    constexpr const char* kGamePrefix = "stats.game.";
+    constexpr std::size_t kGamePrefixLength = 11;
+    for (const auto& [key, value] : in) {
+        if (key.rfind(kGamePrefix, 0) != 0) continue;
+        const std::size_t fieldSeparator = key.find('.', kGamePrefixLength);
+        if (fieldSeparator == std::string::npos) continue;
+
+        const std::string gameId = key.substr(kGamePrefixLength,
+                                              fieldSeparator - kGamePrefixLength);
+        if (!isSafeGameId(gameId)) continue;
+        const std::string field = key.substr(fieldSeparator + 1);
+        GameStats& stats = gameStats_[gameId];
+
+        int integerValue = 0;
+        float floatValue = 0.0f;
+        if (field == "averageScore") {
+            if (parseFiniteFloat(value, floatValue)) {
+                stats.averageScore = std::clamp(floatValue, 0.0f, 100.0f);
+            }
+        } else if (parseInt(value, integerValue)) {
+            integerValue = std::max(0, integerValue);
+            if (field == "sessions") stats.sessions = integerValue;
+            else if (field == "bestScore") stats.bestScore = std::clamp(integerValue, 0, 100);
+            else if (field == "mostRecentScore") {
+                stats.mostRecentScore = std::clamp(integerValue, 0, 100);
+            } else if (field == "totalCorrect") stats.totalCorrect = integerValue;
+            else if (field == "totalAttempts") stats.totalAttempts = integerValue;
+            else if (field == "bestDifficulty") stats.bestDifficulty = integerValue;
+        }
+    }
+
+    for (auto& [gameId, stats] : gameStats_) {
+        (void)gameId;
+        stats.totalCorrect = std::min(stats.totalCorrect, stats.totalAttempts);
+        if (stats.sessions == 0) stats = GameStats{};
+    }
+
+    if (const auto historyIt = in.find("stats.history"); historyIt != in.end()) {
+        const std::string& serialized = historyIt->second;
+        if (serialized.find('|') == std::string::npos) {
+            SessionRecord singleRecord;
+            if (parseSessionRecord(serialized, singleRecord)) {
+                history_.push_back(singleRecord);
+            } else {
+                // Legacy versions stored only comma-separated score values.
+                std::int64_t legacyTimestamp = 1;
+                for (const std::string& value : split(serialized, ',')) {
+                    float score = 0.0f;
+                    if (!value.empty() && parseFiniteFloat(value, score)) {
+                        SessionRecord record;
+                        record.gameId = "legacy";
+                        record.category = GameCategory::Memory;
+                        record.timestamp = legacyTimestamp++;
+                        record.score = std::clamp(static_cast<int>(score), 0, 100);
+                        history_.push_back(record);
+                    }
                 }
             }
         } else {
-            std::istringstream stream(it->second);
-            std::string recordStr;
-            while (std::getline(stream, recordStr, '|')) {
-                if (recordStr.empty()) continue;
-                std::istringstream rs(recordStr);
-                std::string token;
-                SessionRecord r;
-                try {
-                    if (std::getline(rs, token, ',')) r.gameId = token;
-                    if (std::getline(rs, token, ',')) r.category = static_cast<GameCategory>(std::stoi(token));
-                    if (std::getline(rs, token, ',')) r.timestamp = std::stol(token);
-                    if (std::getline(rs, token, ',')) r.score = std::stoi(token);
-                    if (std::getline(rs, token, ',')) r.correct = std::stoi(token);
-                    if (std::getline(rs, token, ',')) r.total = std::stoi(token);
-                    if (std::getline(rs, token, ',')) r.difficulty = std::stoi(token);
-                    if (std::getline(rs, token, ',')) r.durationSeconds = std::stoi(token);
-                    history_.push_back(r);
-                } catch (...) {}
+            for (const std::string& serializedRecord : split(serialized, '|')) {
+                SessionRecord record;
+                if (parseSessionRecord(serializedRecord, record)) history_.push_back(record);
             }
         }
+
         if (history_.size() > kMaxHistory) {
-            history_.erase(history_.begin(), history_.begin() + (history_.size() - kMaxHistory));
+            history_.erase(history_.begin(), history_.begin() +
+                                                 static_cast<std::ptrdiff_t>(history_.size() -
+                                                                             kMaxHistory));
         }
     }
 }
@@ -221,9 +410,7 @@ void Statistics::resetAll() {
     totalGames_ = 0;
 }
 
-void Statistics::resetHistoryOnly() {
-    history_.clear();
-}
+void Statistics::resetHistoryOnly() { history_.clear(); }
 
 void Statistics::resetStatisticsOnly() {
     categories_.fill(CategoryStats{});

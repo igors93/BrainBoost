@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -27,12 +28,17 @@ struct AppContext {
     std::string activeGameId;
     bool resultApplied = false;
     std::vector<const AchievementDef*> lastUnlocks;
+    std::chrono::steady_clock::time_point activeGameStartedAt{};
 
-    // Loads saved progress; on first run picks a default name from $USER.
-    void loadProgress();
-    bool saveProgress();
+    // Persistence state. Unsupported or unreadable saves are opened read-only
+    // so a newer/unknown file is never overwritten on shutdown.
+    SaveLoadStatus lastLoadStatus = SaveLoadStatus::FileNotFound;
+    bool persistenceReadOnly = false;
     std::string lastSaveError;
     bool lastSaveSucceeded = true;
+
+    void loadProgress();
+    bool saveProgress();
 
     // Starts a session of `info` and switches to the Playing screen.
     void startGame(const GameInfo& info);

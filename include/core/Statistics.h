@@ -1,10 +1,10 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
-#include <cstdint>
 
 #include "core/GameCategory.h"
 #include "core/GameResult.h"
@@ -45,29 +45,36 @@ using ChartSeries = std::vector<ChartPoint>;
 
 class Statistics {
 public:
-    void recordResult(const std::string& gameId, GameCategory category, const GameResult& result, std::int64_t timestamp);
+    void recordResult(const std::string& gameId, GameCategory category,
+                      const GameResult& result, std::int64_t timestamp);
 
     const CategoryStats& forCategory(GameCategory category) const {
-        return categories_[static_cast<int>(category)];
-    }
-    const GameStats& forGame(const std::string& gameId) const {
-        auto it = gameStats_.find(gameId);
-        if (it != gameStats_.end()) return it->second;
-        static GameStats empty;
+        const int index = static_cast<int>(category);
+        if (index >= 0 && index < kCategoryCount) return categories_[index];
+        static const CategoryStats empty;
         return empty;
     }
-    
-    int totalGamesPlayed() const { return totalGames_; }
 
+    const GameStats& forGame(const std::string& gameId) const {
+        const auto it = gameStats_.find(gameId);
+        if (it != gameStats_.end()) return it->second;
+        static const GameStats empty;
+        return empty;
+    }
+
+    int totalGamesPlayed() const { return totalGames_; }
     const std::vector<SessionRecord>& history() const { return history_; }
 
-    SummaryStats summaryForPeriod(std::int64_t startTimestamp, std::int64_t endTimestamp) const;
+    SummaryStats summaryForPeriod(std::int64_t startTimestamp,
+                                  std::int64_t endTimestamp) const;
     SummaryStats dailySummary(std::int64_t now) const;
     SummaryStats weeklySummary(std::int64_t now) const;
     SummaryStats monthlySummary(std::int64_t now) const;
 
     enum class FilterType { All, Game, Category, Recent };
-    ChartSeries prepareChartSeries(FilterType filter, const std::string& filterValue = "", std::int64_t now = 0) const;
+    ChartSeries prepareChartSeries(FilterType filter,
+                                   const std::string& filterValue = "",
+                                   std::int64_t now = 0) const;
 
     void toMap(KeyValueMap& out) const;
     void fromMap(const KeyValueMap& in);
@@ -77,7 +84,7 @@ public:
     void resetStatisticsOnly();
 
 private:
-    static constexpr size_t kMaxHistory = 1000;
+    static constexpr std::size_t kMaxHistory = 1000;
 
     std::array<CategoryStats, kCategoryCount> categories_{};
     std::map<std::string, GameStats> gameStats_;

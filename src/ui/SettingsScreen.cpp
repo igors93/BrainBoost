@@ -10,6 +10,12 @@ void SettingsScreen::render(AppContext& context, Renderer& renderer,
     renderer.drawText("Configurações", area.x, y, 26, Theme::kText, true);
     y += 50;
 
+    if (!context.lastSaveSucceeded && !context.lastSaveError.empty()) {
+        const float errorHeight = renderer.drawTextWrapped(
+            context.lastSaveError, area.x, y, area.w, 14, Theme::kDanger, true);
+        y += errorHeight + 12;
+    }
+
     if (!nameLoaded_) {
         nameField_.text = context.profile.name;
         nameLoaded_ = true;
@@ -37,23 +43,32 @@ void SettingsScreen::render(AppContext& context, Renderer& renderer,
     // --- Data ---
     const Rect dataPanel{area.x, y, area.w, area.bottom() - y};
     renderer.fillRect(dataPanel, Theme::kPanel);
-    renderer.drawText("Zerar Dados", dataPanel.x + 16, dataPanel.y + 12, 16, Theme::kText, true);
+    renderer.drawText("Zerar Dados", dataPanel.x + 16, dataPanel.y + 12, 16,
+                      Theme::kText, true);
 
     float rowY = dataPanel.y + 42;
-    const float btnWidth = 240.0f;
-    const float btnHeight = 44.0f;
+    const float buttonWidth = 240.0f;
+    const float buttonHeight = 44.0f;
     const float spacing = 10.0f;
 
-    auto drawResetOption = [&](const std::string& label, ResetScope scope, float& currentY) {
+    auto drawResetOption = [&](const std::string& label, ResetScope scope,
+                               float& currentY) {
         if (confirmingReset_ == ResetScope::None) {
-            if (Widgets::button(renderer, input, Rect{dataPanel.x + 16, currentY, btnWidth, btnHeight}, label, Theme::kDangerButton, 15)) {
+            if (Widgets::button(renderer, input,
+                                Rect{dataPanel.x + 16, currentY, buttonWidth,
+                                     buttonHeight},
+                                label, Theme::kDangerButton, 15)) {
                 confirmingReset_ = scope;
             }
         } else if (confirmingReset_ == scope) {
-            if (Widgets::button(renderer, input, Rect{dataPanel.x + 16, currentY, btnWidth, btnHeight}, "Confirmar", rgb(0x991B1B), 15)) {
+            if (Widgets::button(renderer, input,
+                                Rect{dataPanel.x + 16, currentY, buttonWidth,
+                                     buttonHeight},
+                                "Confirmar", rgb(0x991B1B), 15)) {
                 if (scope == ResetScope::All) {
                     context.profile.reset();
                     context.stats.resetAll();
+                    nameField_.text = context.profile.name;
                 } else if (scope == ResetScope::Statistics) {
                     context.stats.resetStatisticsOnly();
                 } else if (scope == ResetScope::History) {
@@ -67,13 +82,18 @@ void SettingsScreen::render(AppContext& context, Renderer& renderer,
                 context.saveProgress();
                 confirmingReset_ = ResetScope::None;
             }
-            if (Widgets::button(renderer, input, Rect{dataPanel.x + 16 + btnWidth + 10, currentY, 130, btnHeight}, "Cancelar")) {
+            if (Widgets::button(renderer, input,
+                                Rect{dataPanel.x + 16 + buttonWidth + 10, currentY,
+                                     130, buttonHeight},
+                                "Cancelar")) {
                 confirmingReset_ = ResetScope::None;
             }
-            renderer.drawText("Tem certeza? Esta ação não pode ser desfeita.", dataPanel.x + 16, currentY + btnHeight + 8, 13, Theme::kDanger);
-            currentY += 20; // extra space for warning
+            renderer.drawText("Tem certeza? Esta ação não pode ser desfeita.",
+                              dataPanel.x + 16, currentY + buttonHeight + 8, 13,
+                              Theme::kDanger);
+            currentY += 20;
         }
-        currentY += btnHeight + spacing;
+        currentY += buttonHeight + spacing;
     };
 
     drawResetOption("Zerar tudo", ResetScope::All, rowY);
