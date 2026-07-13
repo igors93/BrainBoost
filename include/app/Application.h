@@ -22,12 +22,16 @@ public:
     void shutdown();
 
 private:
-    void renderContent(const Rect& area, float deltaSeconds);
+    float renderContent(const Rect& area, float deltaSeconds);
 
     SDL_Window* window_ = nullptr;
     Renderer renderer_;
     Input input_;
     AppContext context_;
+
+    float scrollY_ = 0.0f;
+    float contentHeight_ = 0.0f;
+    ScreenId lastScreen_ = ScreenId::Home;
 
     Sidebar sidebar_;
     HomeScreen homeScreen_;

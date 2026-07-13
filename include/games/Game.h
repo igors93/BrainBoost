@@ -6,17 +6,13 @@
 
 class Renderer;
 
-// Base interface for every playable game.
-//
-// update() owns state transitions and input processing. render() is const and
-// only draws the current state. This separation allows the rules to be tested
-// without creating an SDL window.
+// Base interface for every playable game. update() owns only rules and semantic
+// actions; render() owns geometry and drawing.
 class Game {
 public:
     virtual ~Game() = default;
 
-    virtual void update(float deltaSeconds, const GameInput& input,
-                        const Rect& area) = 0;
+    virtual void update(float deltaSeconds, const GameInput& input) = 0;
     virtual void render(Renderer& renderer, const Rect& area) const = 0;
 
     virtual bool isFinished() const = 0;

@@ -7,8 +7,8 @@
 #include "ui/Input.h"
 #include "ui/Renderer.h"
 
-void AchievementsScreen::render(AppContext& context, Renderer& renderer,
-                                const Input& input, const Rect& area) {
+float AchievementsScreen::render(AppContext& context, Renderer& renderer,
+                                 const Input& input, const Rect& area) {
     (void)input;
     float y = area.y;
     renderer.drawText("Conquistas", area.x, y, 26, Theme::kText, true);
@@ -46,4 +46,5 @@ void AchievementsScreen::render(AppContext& context, Renderer& renderer,
 
         y += 72;
     }
+    return y - area.y;
 }

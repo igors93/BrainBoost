@@ -6,10 +6,14 @@ void Input::beginFrame() {
     enterPressed_ = false;
     escapePressed_ = false;
     textTyped_.clear();
+    scrollDeltaY_ = 0.0f;
 }
 
 void Input::handleEvent(const SDL_Event& event) {
     switch (event.type) {
+        case SDL_MOUSEWHEEL:
+            scrollDeltaY_ += static_cast<float>(event.wheel.y);
+            break;
         case SDL_MOUSEMOTION:
             mouseX_ = static_cast<float>(event.motion.x);
             mouseY_ = static_cast<float>(event.motion.y);

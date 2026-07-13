@@ -1,2 +1,7 @@
 build/
 brainboost_save.ini
+save/
+*.tmp
+*.bak
+*.corrupted
+*.corrupted.*

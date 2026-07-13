@@ -3,25 +3,12 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "games/GameLayout.h"
 #include "ui/Renderer.h"
 #include "ui/Widgets.h"
 
-namespace {
-
-Rect recallFieldRect(const Rect& area) {
-    return Rect{area.centerX() - 130.0f, area.y + 100.0f, 260.0f, 46.0f};
-}
-
-Rect confirmButtonRect(const Rect& area) {
-    const Rect field = recallFieldRect(area);
-    return Rect{area.centerX() - 110.0f, field.bottom() + 16.0f, 220.0f, 44.0f};
-}
-
-}  // namespace
-
 void NumberMemoryGame::render(Renderer& renderer, const Rect& area) const {
     const float cx = area.centerX();
-
     char progress[32];
     std::snprintf(progress, sizeof(progress), "Rodada %d de %d", round_ + 1,
                   kTotalRounds);
@@ -34,17 +21,18 @@ void NumberMemoryGame::render(Renderer& renderer, const Rect& area) const {
                                       16, Theme::kTextMuted);
             renderer.drawTextCentered(sequence_, cx, area.y + 95, 42,
                                       Theme::kAccent, true);
-            Widgets::progressBar(
-                renderer, Rect{cx - 160, area.y + 170, 320, 8},
-                phaseTimer_ / std::max(0.001f, memorizeSeconds()));
+            Widgets::progressBar(renderer, {cx - 160, area.y + 170, 320, 8},
+                                 phaseTimer_ / std::max(0.001f, memorizeSeconds()));
             break;
         case Phase::Recall:
             renderer.drawTextCentered("Digite a sequência que você viu:", cx,
                                       area.y + 60, 16, Theme::kTextMuted);
-            Widgets::drawTextField(renderer, recallFieldRect(area), recallText_,
-                                   recallFocused_, 22);
-            Widgets::drawButton(renderer, confirmButtonRect(area), "Confirmar",
-                                Theme::kButton, 17);
+            Widgets::drawTextField(renderer,
+                                   GameLayout::numberMemoryRecallField(area),
+                                   recallText_, recallFocused_, 22);
+            Widgets::drawButton(renderer,
+                                GameLayout::numberMemoryConfirmButton(area),
+                                "Confirmar", Theme::kButton, 17);
             break;
         case Phase::Feedback:
             if (lastRoundCorrect_) {

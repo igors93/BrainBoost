@@ -39,20 +39,40 @@ void testUnsupportedSaveIsNeverOverwritten() {
     fs::create_directories(directory);
     const fs::path savePath = directory / "save.ini";
     const std::string original = "save.version=999\nprofile.xp=9999\n";
-    {
-        std::ofstream file(savePath);
-        file << original;
-    }
+    { std::ofstream file(savePath); file << original; }
 
     AppContext context;
     context.saveManager = SaveManager(savePath.string());
     context.loadProgress();
-
     TEST_CHECK(context.lastLoadStatus == SaveLoadStatus::UnsupportedVersion);
     TEST_CHECK(context.persistenceReadOnly);
     TEST_CHECK(!context.saveProgress());
     TEST_CHECK(readAll(savePath) == original);
+    fs::remove_all(directory);
+}
 
+void testRecoveredBackupRemainsWritable() {
+    const fs::path directory = uniqueTestDirectory();
+    fs::create_directories(directory);
+    const fs::path savePath = directory / "save.ini";
+    SaveManager manager(savePath.string());
+    UserProfile first;
+    Statistics stats;
+    first.addXp(100);
+    TEST_CHECK(manager.save(first, stats));
+    UserProfile second;
+    second.addXp(200);
+    TEST_CHECK(manager.save(second, stats));
+    { std::ofstream file(savePath, std::ios::trunc); file << "save.version=bad\n"; }
+
+    AppContext context;
+    context.saveManager = manager;
+    context.loadProgress();
+    TEST_CHECK(context.lastLoadStatus == SaveLoadStatus::RecoveredFromBackup);
+    TEST_CHECK(!context.persistenceReadOnly);
+    TEST_CHECK(context.profile.xp() == 100);
+    context.profile.addXp(25);
+    TEST_CHECK(context.saveProgress());
     fs::remove_all(directory);
 }
 
@@ -62,6 +82,7 @@ int main() {
     std::cout << "Running AppContextTest...\n";
     testActiveGameMetadataSurvivesTemporaryCatalogCopy();
     testUnsupportedSaveIsNeverOverwritten();
+    testRecoveredBackupRemainsWritable();
     std::cout << "All AppContext tests passed!\n";
     return 0;
 }

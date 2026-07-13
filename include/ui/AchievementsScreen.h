@@ -9,6 +9,6 @@ class Input;
 // Lists every achievement with its unlock state and XP reward.
 class AchievementsScreen {
 public:
-    void render(AppContext& context, Renderer& renderer, const Input& input,
+    float render(AppContext& context, Renderer& renderer, const Input& input,
                 const Rect& area);
 };

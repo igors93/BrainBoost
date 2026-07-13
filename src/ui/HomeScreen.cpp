@@ -173,8 +173,8 @@ void HomeScreen::renderBottomPanels(AppContext& context, Renderer& renderer,
     }
 }
 
-void HomeScreen::render(AppContext& context, Renderer& renderer, const Input& input,
-                        const Rect& area) {
+float HomeScreen::render(AppContext& context, Renderer& renderer, const Input& input,
+                         const Rect& area) {
     float y = area.y;
     y += renderHeader(context, renderer, area) + 8;
 
@@ -189,10 +189,15 @@ void HomeScreen::render(AppContext& context, Renderer& renderer, const Input& in
 
     // Bottom panels fill whatever room is left above the tip line.
     const float tipHeight = 26.0f;
-    const float panelHeight = std::max(150.0f, area.bottom() - y - tipHeight - 8.0f);
+    const float remainingHeight = area.bottom() - y - tipHeight - 20.0f;
+    const float panelHeight = std::max(180.0f, remainingHeight);
     renderBottomPanels(context, renderer, input, Rect{area.x, y, area.w, panelHeight});
 
+    y += panelHeight + 12.0f;
     char tip[160];
     std::snprintf(tip, sizeof(tip), "Dica do dia: %s", tipOfTheDay());
-    renderer.drawText(tip, area.x, area.bottom() - tipHeight + 4, 13, Theme::kTextMuted);
+    renderer.drawText(tip, area.x, y, 13, Theme::kTextMuted);
+    y += tipHeight;
+
+    return y - area.y;
 }

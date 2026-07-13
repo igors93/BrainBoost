@@ -6,15 +6,12 @@
 
 #include "games/Game.h"
 
-// "Memória Numérica": a digit sequence is shown briefly, then the player
-// must type it back. The sequence grows after every correct round.
 class NumberMemoryGame : public Game {
 public:
     NumberMemoryGame();
     explicit NumberMemoryGame(std::uint32_t seed);
 
-    void update(float deltaSeconds, const GameInput& input,
-                const Rect& area) override;
+    void update(float deltaSeconds, const GameInput& input) override;
     void render(Renderer& renderer, const Rect& area) const override;
     bool isFinished() const override;
     GameResult result() const override;
@@ -43,7 +40,6 @@ private:
     int round_ = 0;
     int successes_ = 0;
     int sequenceLength_ = kStartLength;
-
     std::string sequence_;
     std::string recallText_;
     bool recallFocused_ = false;

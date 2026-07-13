@@ -9,8 +9,8 @@ class Input;
 
 class SettingsScreen {
 public:
-    void render(AppContext& context, Renderer& renderer, const Input& input,
-                const Rect& area);
+    float render(AppContext& context, Renderer& renderer, const Input& input,
+                 const Rect& area);
 
 private:
     Widgets::TextFieldState nameField_;

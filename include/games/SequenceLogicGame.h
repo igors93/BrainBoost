@@ -7,15 +7,12 @@
 
 #include "games/Game.h"
 
-// "Sequência Lógica": a numeric sequence follows a hidden rule; pick the
-// next term among four options.
 class SequenceLogicGame : public Game {
 public:
     SequenceLogicGame();
     explicit SequenceLogicGame(std::uint32_t seed);
 
-    void update(float deltaSeconds, const GameInput& input,
-                const Rect& area) override;
+    void update(float deltaSeconds, const GameInput& input) override;
     void render(Renderer& renderer, const Rect& area) const override;
     bool isFinished() const override;
     GameResult result() const override;
@@ -39,7 +36,6 @@ private:
     Phase phase_ = Phase::Question;
     int round_ = 0;
     int correctCount_ = 0;
-
     std::string sequenceText_;
     std::array<int, kOptionCount> options_{};
     int correctOption_ = 0;

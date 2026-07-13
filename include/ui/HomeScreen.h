@@ -10,8 +10,8 @@ class Input;
 // performance / evolution / achievements panels.
 class HomeScreen {
 public:
-    void render(AppContext& context, Renderer& renderer, const Input& input,
-                const Rect& area);
+    float render(AppContext& context, Renderer& renderer, const Input& input,
+                 const Rect& area);
 
     // Card grid alone; also used by the "Jogos" page. Returns the height used.
     float renderGameGrid(AppContext& context, Renderer& renderer, const Input& input,

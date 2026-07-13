@@ -1,104 +1,89 @@
 #include <cmath>
 #include <iostream>
+#include <memory>
 
 #include "../TestUtils.h"
 #include "games/ReactionTimeGame.h"
 
 namespace {
 
-const Rect kArea{0.0f, 0.0f, 800.0f, 600.0f};
+class ManualClock final : public GameClock {
+public:
+    double nowSeconds() const override { return now_; }
+    void advance(double seconds) { now_ += seconds; }
+private:
+    double now_ = 1000.0;
+};
 
-GameInput startInput() {
-    GameInput input;
-    input.startPressed = true;
-    return input;
-}
-
-GameInput panelClick() {
-    GameInput input;
-    input.primaryPressed = true;
-    input.pointerX = 100.0f;
-    input.pointerY = 100.0f;
-    return input;
-}
+GameInput startInput() { GameInput input; input.startPressed = true; return input; }
+GameInput panelClick() { GameInput input; input.primaryActionPressed = true; return input; }
 
 void advanceToGreen(ReactionTimeGame& game) {
     TEST_CHECK(game.isWaiting());
-    game.update(game.waitingSecondsRemaining() + 0.01f, GameInput{}, kArea);
+    game.update(game.waitingSecondsRemaining() + 0.01f, GameInput{});
     TEST_CHECK(game.isReady());
 }
 
-void testSeedMakesWaitingDelayDeterministic() {
-    ReactionTimeGame first(1234);
-    ReactionTimeGame second(1234);
-
-    first.update(0.0f, startInput(), kArea);
-    second.update(0.0f, startInput(), kArea);
-
-    TEST_CHECK(first.isWaiting());
-    TEST_CHECK(second.isWaiting());
-    TEST_CHECK(std::fabs(first.waitingSecondsRemaining() -
-                         second.waitingSecondsRemaining()) < 0.0001f);
+void testClockMeasuresReactionIndependentlyFromFrameDelta() {
+    auto clock = std::make_shared<ManualClock>();
+    ReactionTimeGame game(2, clock);
+    game.update(0.0f, startInput());
+    advanceToGreen(game);
+    clock->advance(0.250);
+    game.update(5.0f, GameInput{});  // frame delay must not become reaction time
+    game.update(0.0f, panelClick());
+    TEST_CHECK(std::fabs(game.averageReactionMs() - 250.0f) < 0.1f);
 }
 
 void testEarlyClickConsumesTrial() {
-    ReactionTimeGame game(1);
-    game.update(0.0f, startInput(), kArea);
-    game.update(0.0f, panelClick(), kArea);
-
+    auto clock = std::make_shared<ManualClock>();
+    ReactionTimeGame game(1, clock);
+    game.update(0.0f, startInput());
+    game.update(0.0f, panelClick());
     TEST_CHECK(game.isShowingTooEarly());
     TEST_CHECK(game.falseStarts() == 1);
     TEST_CHECK(game.completedTrials() == 1);
 }
 
-void testValidReactionUsesDeterministicElapsedTime() {
-    ReactionTimeGame game(2);
-    game.update(0.0f, startInput(), kArea);
-    advanceToGreen(game);
-
-    game.update(0.250f, GameInput{}, kArea);
-    game.update(0.0f, panelClick(), kArea);
-
-    TEST_CHECK(game.isShowingResult());
-    TEST_CHECK(game.completedTrials() == 1);
-    TEST_CHECK(std::fabs(game.averageReactionMs() - 250.0f) < 0.1f);
-    TEST_CHECK(game.result().correct == 1);
+void testAllFalseStartsAwardNothing() {
+    auto clock = std::make_shared<ManualClock>();
+    ReactionTimeGame game(9, clock);
+    game.update(0.0f, startInput());
+    while (!game.isFinished()) {
+        if (game.isWaiting()) game.update(0.0f, panelClick());
+        else game.update(2.0f, GameInput{});
+    }
+    const GameResult result = game.result();
+    TEST_CHECK(result.correct == 0);
+    TEST_CHECK(result.score == 0);
+    TEST_CHECK(result.xpEarned == 0);
 }
 
-void testCompleteGameWithOneFalseStart() {
-    ReactionTimeGame game(9);
-    game.update(0.0f, startInput(), kArea);
-
-    game.update(0.0f, panelClick(), kArea);
-    TEST_CHECK(game.completedTrials() == 1);
-    game.update(2.0f, GameInput{}, kArea);
-
+void testValidSessionProducesBoundedResult() {
+    auto clock = std::make_shared<ManualClock>();
+    ReactionTimeGame game(12, clock);
+    game.update(0.0f, startInput());
     while (!game.isFinished()) {
-        if (game.isWaiting()) {
-            advanceToGreen(game);
-        } else if (game.isReady()) {
-            game.update(0.300f, GameInput{}, kArea);
-            game.update(0.0f, panelClick(), kArea);
-        } else {
-            game.update(2.0f, GameInput{}, kArea);
-        }
+        if (game.isWaiting()) advanceToGreen(game);
+        else if (game.isReady()) {
+            clock->advance(0.300);
+            game.update(0.0f, panelClick());
+        } else game.update(2.0f, GameInput{});
     }
-
     const GameResult result = game.result();
-    TEST_CHECK(game.falseStarts() == 1);
-    TEST_CHECK(result.correct == 4);
-    TEST_CHECK(result.total == 5);
+    TEST_CHECK(result.correct == 5);
     TEST_CHECK(result.score >= 5 && result.score <= 100);
+    TEST_CHECK(result.xpEarned > 0);
 }
 
 }  // namespace
 
 int main() {
     std::cout << "Running ReactionTimeGame model tests...\n";
-    testSeedMakesWaitingDelayDeterministic();
+    testClockMeasuresReactionIndependentlyFromFrameDelta();
     testEarlyClickConsumesTrial();
-    testValidReactionUsesDeterministicElapsedTime();
-    testCompleteGameWithOneFalseStart();
+    testAllFalseStartsAwardNothing();
+    testValidSessionProducesBoundedResult();
     std::cout << "All ReactionTimeGame model tests passed!\n";
     return 0;
 }

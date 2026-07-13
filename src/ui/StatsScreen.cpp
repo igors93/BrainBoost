@@ -8,8 +8,8 @@
 #include "ui/Renderer.h"
 #include "ui/Widgets.h"
 
-void StatsScreen::render(AppContext& context, Renderer& renderer, const Input& input,
-                         const Rect& area) {
+float StatsScreen::render(AppContext& context, Renderer& renderer, const Input& input,
+                          const Rect& area) {
     float y = area.y;
     renderer.drawText("Estatísticas", area.x, y, 26, Theme::kText, true);
     y += 46;
@@ -50,7 +50,8 @@ void StatsScreen::render(AppContext& context, Renderer& renderer, const Input& i
     y += chartHeight + 12;
 
     // Per-category breakdown.
-    const Rect categoriesPanel{area.x, y, area.w, area.bottom() - y};
+    const float categoriesHeight = std::max(180.0f, area.bottom() - y);
+    const Rect categoriesPanel{area.x, y, area.w, categoriesHeight};
     renderer.fillRect(categoriesPanel, Theme::kPanel);
     renderer.drawText("Habilidade por categoria", categoriesPanel.x + 16,
                       categoriesPanel.y + 12, 16, Theme::kText, true);
@@ -70,4 +71,5 @@ void StatsScreen::render(AppContext& context, Renderer& renderer, const Input& i
                           label, stats.skill / 100.0f, 230.0f);
         rowY += rowHeight;
     }
+    return (y + categoriesHeight) - area.y;
 }

@@ -41,6 +41,12 @@ public:
     float drawTextWrapped(const std::string& text, float x, float y, float maxWidth,
                           int size, Color color, bool bold = false);
 
+    void setTranslation(float tx, float ty) {
+        translationX_ = tx;
+        translationY_ = ty;
+    }
+    void setClipRect(const Rect* rect);
+
 private:
     struct Glyph {
         SDL_Texture* texture = nullptr;  // null for blank glyphs (e.g. space)
@@ -61,6 +67,9 @@ private:
     FT_Library library_ = nullptr;
     FT_Face regular_ = nullptr;
     FT_Face bold_ = nullptr;
+
+    float translationX_ = 0.0f;
+    float translationY_ = 0.0f;
 
     std::map<uint64_t, Glyph> glyphCache_;
     std::map<int, float> ascentCache_;

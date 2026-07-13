@@ -26,34 +26,29 @@ bool Application::init() {
     return true;
 }
 
-void Application::renderContent(const Rect& area, float deltaSeconds) {
+float Application::renderContent(const Rect& area, float deltaSeconds) {
     switch (context_.screen) {
         case ScreenId::Home:
-            homeScreen_.render(context_, renderer_, input_, area);
-            break;
+            return homeScreen_.render(context_, renderer_, input_, area);
         case ScreenId::Games: {
             renderer_.drawText("Todos os jogos", area.x, area.y, 26, Theme::kText,
                                true);
             const Rect grid{area.x, area.y + 50, area.w, area.h - 50};
-            homeScreen_.renderGameGrid(context_, renderer_, input_, grid);
-            break;
+            return 50.0f + homeScreen_.renderGameGrid(context_, renderer_, input_, grid);
         }
         case ScreenId::Stats:
-            statsScreen_.render(context_, renderer_, input_, area);
-            break;
+            return statsScreen_.render(context_, renderer_, input_, area);
         case ScreenId::Achievements:
-            achievementsScreen_.render(context_, renderer_, input_, area);
-            break;
+            return achievementsScreen_.render(context_, renderer_, input_, area);
         case ScreenId::Settings:
-            settingsScreen_.render(context_, renderer_, input_, area);
-            break;
+            return settingsScreen_.render(context_, renderer_, input_, area);
         case ScreenId::About:
-            aboutScreen_.render(context_, renderer_, input_, area);
-            break;
+            return aboutScreen_.render(context_, renderer_, input_, area);
         case ScreenId::Playing:
             gameScreen_.render(context_, renderer_, input_, area, deltaSeconds);
-            break;
+            return area.h;
     }
+    return 0.0f;
 }
 
 void Application::run() {
@@ -74,13 +69,43 @@ void Application::run() {
 
         renderer_.beginFrame(Theme::kBackground);
 
+        // Sidebar rendering (static, no scroll)
+        renderer_.setTranslation(0.0f, 0.0f);
+        input_.setMouseOffset(0.0f, 0.0f);
         sidebar_.render(context_, renderer_, input_);
 
         const float padding = 26.0f;
         const Rect content{Sidebar::kWidth + padding, padding,
                            renderer_.width() - Sidebar::kWidth - padding * 2.0f,
                            renderer_.height() - padding * 2.0f};
-        renderContent(content, deltaSeconds);
+
+        // Reset scroll position if screen changed
+        if (context_.screen != lastScreen_) {
+            scrollY_ = 0.0f;
+            contentHeight_ = 0.0f;
+            lastScreen_ = context_.screen;
+        }
+
+        // Apply scroll delta
+        if (context_.screen != ScreenId::Playing) {
+            scrollY_ -= input_.scrollDeltaY() * 36.0f;
+            const float maxScrollY = std::max(0.0f, contentHeight_ - content.h);
+            if (scrollY_ < 0.0f) scrollY_ = 0.0f;
+            if (scrollY_ > maxScrollY) scrollY_ = maxScrollY;
+        } else {
+            scrollY_ = 0.0f;
+        }
+
+        // Render main content with translation and clipping
+        renderer_.setTranslation(0.0f, -scrollY_);
+        input_.setMouseOffset(0.0f, scrollY_);
+        renderer_.setClipRect(&content);
+
+        contentHeight_ = renderContent(content, deltaSeconds);
+
+        renderer_.setClipRect(nullptr);
+        renderer_.setTranslation(0.0f, 0.0f);
+        input_.setMouseOffset(0.0f, 0.0f);
 
         renderer_.endFrame();
     }

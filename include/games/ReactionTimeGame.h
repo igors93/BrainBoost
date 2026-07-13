@@ -1,21 +1,21 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <random>
 #include <vector>
 
 #include "games/Game.h"
+#include "games/GameClock.h"
 
-// "Reação Rápida": wait for the panel to turn green and click as fast as
-// possible. Clicking too early consumes the current trial. Score is based on
-// the average reaction time across valid trials.
 class ReactionTimeGame : public Game {
 public:
     ReactionTimeGame();
     explicit ReactionTimeGame(std::uint32_t seed);
+    ReactionTimeGame(std::uint32_t seed,
+                     std::shared_ptr<const GameClock> clock);
 
-    void update(float deltaSeconds, const GameInput& input,
-                const Rect& area) override;
+    void update(float deltaSeconds, const GameInput& input) override;
     void render(Renderer& renderer, const Rect& area) const override;
     bool isFinished() const override;
     GameResult result() const override;
@@ -37,12 +37,12 @@ private:
     void finishPauseOrGame();
 
     std::mt19937 rng_;
+    std::shared_ptr<const GameClock> clock_;
     Phase phase_ = Phase::Instructions;
     int trial_ = 0;
     int falseStarts_ = 0;
-
     float waitTimer_ = 0.0f;
-    float goElapsedSeconds_ = 0.0f;
+    double goStartedAtSeconds_ = 0.0;
     float pauseTimer_ = 0.0f;
     std::vector<float> reactionTimesMs_;
 };

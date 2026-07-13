@@ -23,7 +23,7 @@ void applyDefaultSystemName(UserProfile& profile) {
 void AppContext::loadProgress() {
     const SaveLoadResult result = saveManager.loadDetailed(profile, stats);
     lastLoadStatus = result.status;
-    persistenceReadOnly = false;
+    persistenceReadOnly = !result.safeToWrite;
     lastSaveSucceeded = true;
     lastSaveError.clear();
 
@@ -31,16 +31,21 @@ void AppContext::loadProgress() {
         case SaveLoadStatus::Success:
             return;
 
+        case SaveLoadStatus::RecoveredFromBackup:
+            persistenceReadOnly = false;
+            lastSaveError = "O progresso foi recuperado do backup válido.";
+            return;
+
         case SaveLoadStatus::FileNotFound:
             profile.reset();
             stats.resetAll();
+            persistenceReadOnly = false;
             applyDefaultSystemName(profile);
             return;
 
         case SaveLoadStatus::UnsupportedVersion:
             profile.reset();
             stats.resetAll();
-            persistenceReadOnly = true;
             lastSaveSucceeded = false;
             lastSaveError =
                 "O progresso foi criado por uma versão mais nova e não será sobrescrito.";
@@ -49,7 +54,6 @@ void AppContext::loadProgress() {
         case SaveLoadStatus::IoError:
             profile.reset();
             stats.resetAll();
-            persistenceReadOnly = true;
             lastSaveSucceeded = false;
             lastSaveError =
                 "O arquivo de progresso não pôde ser lido e foi protegido contra sobrescrita.";
@@ -60,8 +64,14 @@ void AppContext::loadProgress() {
             stats.resetAll();
             applyDefaultSystemName(profile);
             lastSaveSucceeded = false;
-            lastSaveError =
-                "O progresso estava corrompido. O arquivo anterior será preservado como backup.";
+            if (result.safeToWrite) {
+                persistenceReadOnly = false;
+                lastSaveError =
+                    "O progresso corrompido foi isolado. Um novo arquivo seguro será criado.";
+            } else {
+                lastSaveError =
+                    "O progresso está corrompido e não pôde ser isolado; ele não será sobrescrito.";
+            }
             return;
     }
 }

@@ -4,21 +4,59 @@
 
 #include "app/AppContext.h"
 #include "games/GameInput.h"
+#include "games/GameLayout.h"
 #include "ui/Input.h"
 #include "ui/Renderer.h"
 #include "ui/Widgets.h"
 
 namespace {
 
-GameInput makeGameInput(const Input& input) {
+GameInput makeGameInput(const Input& input, const std::string& gameId,
+                        const Rect& panel) {
     GameInput gameInput;
-    gameInput.pointerX = input.mouseX();
-    gameInput.pointerY = input.mouseY();
-    gameInput.primaryPressed = input.mousePressed();
     gameInput.confirmPressed = input.enterPressed();
-    gameInput.cancelPressed = input.escapePressed();
     gameInput.backspacePressed = input.backspacePressed();
     gameInput.text = input.textTyped();
+
+    if (!input.mousePressed()) {
+        if (gameId == "quick_reaction" && input.enterPressed()) {
+            gameInput.startPressed = true;
+        }
+        return gameInput;
+    }
+
+    const float x = input.mouseX();
+    const float y = input.mouseY();
+
+    if (gameId == "mental_math") {
+        if (GameLayout::mentalMathAnswerField(panel).contains(x, y)) {
+            gameInput.focusTextField = true;
+        } else {
+            gameInput.blurTextField = true;
+            gameInput.submitPressed =
+                GameLayout::mentalMathSubmitButton(panel).contains(x, y);
+        }
+    } else if (gameId == "number_memory") {
+        if (GameLayout::numberMemoryRecallField(panel).contains(x, y)) {
+            gameInput.focusTextField = true;
+        } else {
+            gameInput.blurTextField = true;
+            gameInput.submitPressed =
+                GameLayout::numberMemoryConfirmButton(panel).contains(x, y);
+        }
+    } else if (gameId == "quick_reaction") {
+        gameInput.startPressed =
+            GameLayout::reactionStartButton(panel).contains(x, y);
+        gameInput.primaryActionPressed =
+            GameLayout::reactionPanel(panel).contains(x, y);
+    } else if (gameId == "logic_sequence") {
+        for (int index = 0; index < 4; ++index) {
+            if (GameLayout::sequenceOptionButton(panel, index).contains(x, y)) {
+                gameInput.optionIndex = index;
+                break;
+            }
+        }
+    }
     return gameInput;
 }
 
@@ -34,7 +72,6 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     renderer.drawTextCentered("Sessão concluída!", cx, y, 24, Theme::kSuccess,
                               true);
     y += 44;
-
     if (!context.lastSaveSucceeded) {
         renderer.drawTextCentered(context.lastSaveError, cx, y, 14,
                                   Theme::kDanger, true);
@@ -70,15 +107,14 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     const float buttonWidth = 190.0f;
     const float spacing = 12.0f;
     if (Widgets::button(renderer, input,
-                        Rect{cx - buttonWidth - spacing * 0.5f, y, buttonWidth,
-                             46},
+                        {cx - buttonWidth - spacing * 0.5f, y, buttonWidth, 46},
                         "Jogar novamente", Theme::kButton, 16)) {
         const GameInfo* info = context.registry.findById(context.activeGameId);
         if (info) context.startGame(*info);
         return;
     }
     if (Widgets::button(renderer, input,
-                        Rect{cx + spacing * 0.5f, y, buttonWidth, 46},
+                        {cx + spacing * 0.5f, y, buttonWidth, 46},
                         "Voltar ao início", Theme::kButton, 16)) {
         context.closeGame(ScreenId::Home);
     }
@@ -91,14 +127,15 @@ void GameScreen::render(AppContext& context, Renderer& renderer,
     if (!context.activeGame || info == nullptr) {
         renderer.drawText("Nenhum jogo ativo.", area.x, area.y, 20,
                           Theme::kText, true);
-        if (Widgets::button(renderer, input,
-                            Rect{area.x, area.y + 40, 190, 44},
+        if (Widgets::button(renderer, input, {area.x, area.y + 40, 190, 44},
                             "Voltar ao início")) {
             context.screen = ScreenId::Home;
         }
         return;
     }
 
+    // Escape consistently abandons the current game. Text fields lose focus by
+    // clicking outside; the game model no longer contains unreachable cancel code.
     if (input.escapePressed()) {
         context.closeGame(ScreenId::Home);
         return;
@@ -108,7 +145,7 @@ void GameScreen::render(AppContext& context, Renderer& renderer,
     renderer.drawText(categoryName(info->category), area.x, area.y + 38, 14,
                       Theme::categoryColor(info->category));
     if (Widgets::button(renderer, input,
-                        Rect{area.right() - 130, area.y, 130, 38},
+                        {area.right() - 130, area.y, 130, 38},
                         "Sair do jogo", Theme::kButton, 15)) {
         context.closeGame(ScreenId::Home);
         return;
@@ -118,12 +155,10 @@ void GameScreen::render(AppContext& context, Renderer& renderer,
     renderer.fillRect(panel, Theme::kPanel);
 
     if (!context.activeGame->isFinished()) {
-        context.activeGame->update(deltaSeconds, makeGameInput(input), panel);
+        context.activeGame->update(
+            deltaSeconds, makeGameInput(input, context.activeGameId, panel));
     }
 
-    if (context.activeGame->isFinished()) {
-        renderResults(context, renderer, input, panel);
-    } else {
-        context.activeGame->render(renderer, panel);
-    }
+    if (context.activeGame->isFinished()) renderResults(context, renderer, input, panel);
+    else context.activeGame->render(renderer, panel);
 }

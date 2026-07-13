@@ -2,25 +2,12 @@
 
 #include <cstdio>
 
+#include "games/GameLayout.h"
 #include "ui/Renderer.h"
 #include "ui/Widgets.h"
 
-namespace {
-
-Rect answerFieldRect(const Rect& area) {
-    return Rect{area.centerX() - 110.0f, area.y + 150.0f, 220.0f, 46.0f};
-}
-
-Rect submitButtonRect(const Rect& area) {
-    const Rect field = answerFieldRect(area);
-    return Rect{area.centerX() - 110.0f, field.bottom() + 16.0f, 220.0f, 44.0f};
-}
-
-}  // namespace
-
 void MentalMathGame::render(Renderer& renderer, const Rect& area) const {
     const float cx = area.centerX();
-
     char progress[32];
     std::snprintf(progress, sizeof(progress), "Questão %d de %d",
                   questionIndex_ + 1, kTotalQuestions);
@@ -30,10 +17,10 @@ void MentalMathGame::render(Renderer& renderer, const Rect& area) const {
                               true);
 
     if (phase_ == Phase::Question) {
-        Widgets::drawTextField(renderer, answerFieldRect(area), answerText_,
-                               answerFocused_, 22);
-        Widgets::drawButton(renderer, submitButtonRect(area), "Responder",
-                            Theme::kButton, 17);
+        Widgets::drawTextField(renderer, GameLayout::mentalMathAnswerField(area),
+                               answerText_, answerFocused_, 22);
+        Widgets::drawButton(renderer, GameLayout::mentalMathSubmitButton(area),
+                            "Responder", Theme::kButton, 17);
     } else if (phase_ == Phase::Feedback) {
         if (lastAnswerCorrect_) {
             renderer.drawTextCentered("Correto!", cx, area.y + 165, 24,

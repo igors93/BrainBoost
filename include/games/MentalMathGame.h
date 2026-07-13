@@ -6,15 +6,12 @@
 
 #include "games/Game.h"
 
-// "Cálculo Mental": solve a series of arithmetic operations as fast as
-// possible. Difficulty ramps up with each question.
 class MentalMathGame : public Game {
 public:
     MentalMathGame();
     explicit MentalMathGame(std::uint32_t seed);
 
-    void update(float deltaSeconds, const GameInput& input,
-                const Rect& area) override;
+    void update(float deltaSeconds, const GameInput& input) override;
     void render(Renderer& renderer, const Rect& area) const override;
     bool isFinished() const override;
     GameResult result() const override;
@@ -38,7 +35,6 @@ private:
     Phase phase_ = Phase::Question;
     int questionIndex_ = 0;
     int correctCount_ = 0;
-
     std::string questionText_;
     int expectedAnswer_ = 0;
     std::string answerText_;

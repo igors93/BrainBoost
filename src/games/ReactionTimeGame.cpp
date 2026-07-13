@@ -2,28 +2,23 @@
 
 #include <algorithm>
 #include <numeric>
+#include <utility>
 
-namespace {
+ReactionTimeGame::ReactionTimeGame()
+    : rng_(std::random_device{}()), clock_(std::make_shared<SteadyGameClock>()) {}
 
-Rect startButtonRect(const Rect& area) {
-    return Rect{area.centerX() - 110.0f, area.y + 150.0f, 220.0f, 46.0f};
+ReactionTimeGame::ReactionTimeGame(std::uint32_t seed)
+    : rng_(seed), clock_(std::make_shared<SteadyGameClock>()) {}
+
+ReactionTimeGame::ReactionTimeGame(std::uint32_t seed,
+                                   std::shared_ptr<const GameClock> clock)
+    : rng_(seed), clock_(std::move(clock)) {
+    if (!clock_) clock_ = std::make_shared<SteadyGameClock>();
 }
-
-Rect reactionPanelRect(const Rect& area) {
-    return Rect{area.x + 16.0f, area.y + 48.0f, area.w - 32.0f,
-                area.h - 64.0f};
-}
-
-}  // namespace
-
-ReactionTimeGame::ReactionTimeGame() : rng_(std::random_device{}()) {}
-
-ReactionTimeGame::ReactionTimeGame(std::uint32_t seed) : rng_(seed) {}
 
 void ReactionTimeGame::startTrial() {
     std::uniform_real_distribution<float> delay(1.5f, 3.5f);
     waitTimer_ = delay(rng_);
-    goElapsedSeconds_ = 0.0f;
     phase_ = Phase::Waiting;
 }
 
@@ -35,43 +30,29 @@ float ReactionTimeGame::averageReactionMs() const {
 }
 
 void ReactionTimeGame::finishPauseOrGame() {
-    if (trial_ >= kTotalTrials) {
-        phase_ = Phase::Done;
-    } else {
-        startTrial();
-    }
+    if (trial_ >= kTotalTrials) phase_ = Phase::Done;
+    else startTrial();
 }
 
-void ReactionTimeGame::update(float deltaSeconds, const GameInput& input,
-                              const Rect& area) {
+void ReactionTimeGame::update(float deltaSeconds, const GameInput& input) {
     if (phase_ == Phase::Done) return;
-
     const float safeDelta = std::max(0.0f, deltaSeconds);
-    const Rect panel = reactionPanelRect(area);
-    const bool panelClicked =
-        input.primaryPressed && panel.contains(input.pointerX, input.pointerY);
 
-    // Process actions against the state visible at the beginning of the frame.
-    // This prevents a click made during the red phase from being accepted after
-    // the countdown crosses zero in the same update.
     if (phase_ == Phase::Instructions) {
-        const bool clickedStart =
-            input.primaryPressed &&
-            startButtonRect(area).contains(input.pointerX, input.pointerY);
-        if (input.startPressed || clickedStart || input.confirmPressed) {
+        if (input.startPressed || input.confirmPressed) {
             startTrial();
             return;
         }
-    } else if (phase_ == Phase::Waiting && panelClicked) {
+    } else if (phase_ == Phase::Waiting && input.primaryActionPressed) {
         ++trial_;
         ++falseStarts_;
         phase_ = Phase::TooEarly;
         pauseTimer_ = 1.2f;
         return;
-    } else if (phase_ == Phase::Go && panelClicked) {
-        const float reactionMs =
-            std::max(0.0f, (goElapsedSeconds_ + safeDelta) * 1000.0f);
-        reactionTimesMs_.push_back(reactionMs);
+    } else if (phase_ == Phase::Go && input.primaryActionPressed) {
+        const double elapsed =
+            std::max(0.0, clock_->nowSeconds() - goStartedAtSeconds_);
+        reactionTimesMs_.push_back(static_cast<float>(elapsed * 1000.0));
         ++trial_;
         phase_ = Phase::TrialResult;
         pauseTimer_ = 1.2f;
@@ -83,12 +64,9 @@ void ReactionTimeGame::update(float deltaSeconds, const GameInput& input,
             waitTimer_ -= safeDelta;
             if (waitTimer_ <= 0.0f) {
                 waitTimer_ = 0.0f;
-                goElapsedSeconds_ = 0.0f;
+                goStartedAtSeconds_ = clock_->nowSeconds();
                 phase_ = Phase::Go;
             }
-            break;
-        case Phase::Go:
-            goElapsedSeconds_ += safeDelta;
             break;
         case Phase::TrialResult:
         case Phase::TooEarly:
@@ -106,15 +84,14 @@ GameResult ReactionTimeGame::result() const {
     GameResult result;
     result.correct = static_cast<int>(reactionTimesMs_.size());
     result.total = kTotalTrials;
-
-    if (reactionTimesMs_.empty()) {
-        result.score = 5;
-    } else {
-        const float avg = averageReactionMs();
-        result.score = static_cast<int>(
-            std::clamp((650.0f - avg) / 4.5f, 5.0f, 100.0f));
-    }
-    result.xpEarned = result.score / 2 + 20;
     result.difficulty = std::max(0, kTotalTrials - falseStarts_);
+
+    if (reactionTimesMs_.empty()) return result;
+
+    const float avg = averageReactionMs();
+    result.score = static_cast<int>(
+        std::clamp((650.0f - avg) / 4.5f, 5.0f, 100.0f));
+    const int baseXp = result.score / 2 + result.correct * 4;
+    result.xpEarned = std::max(0, baseXp - falseStarts_ * 5);
     return result;
 }

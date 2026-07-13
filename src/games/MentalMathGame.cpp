@@ -5,30 +5,8 @@
 #include <cstdio>
 #include <cstdlib>
 
-namespace {
-
-Rect answerFieldRect(const Rect& area) {
-    return Rect{area.centerX() - 110.0f, area.y + 150.0f, 220.0f, 46.0f};
-}
-
-Rect submitButtonRect(const Rect& area) {
-    const Rect field = answerFieldRect(area);
-    return Rect{area.centerX() - 110.0f, field.bottom() + 16.0f, 220.0f, 44.0f};
-}
-
-void eraseLastCharacter(std::string& text) {
-    if (!text.empty()) text.pop_back();
-}
-
-}  // namespace
-
-MentalMathGame::MentalMathGame() : rng_(std::random_device{}()) {
-    nextQuestion();
-}
-
-MentalMathGame::MentalMathGame(std::uint32_t seed) : rng_(seed) {
-    nextQuestion();
-}
+MentalMathGame::MentalMathGame() : rng_(std::random_device{}()) { nextQuestion(); }
+MentalMathGame::MentalMathGame(std::uint32_t seed) : rng_(seed) { nextQuestion(); }
 
 void MentalMathGame::nextQuestion() {
     const int level = questionIndex_ / 3;
@@ -38,7 +16,6 @@ void MentalMathGame::nextQuestion() {
     int a = operand(rng_);
     int b = operand(rng_);
     char symbol = '+';
-
     switch (operation(rng_)) {
         case 0:
             expectedAnswer_ = a + b;
@@ -67,38 +44,32 @@ void MentalMathGame::nextQuestion() {
 
 void MentalMathGame::applyTextInput(const GameInput& input) {
     if (!answerFocused_) return;
-
     for (char character : input.text) {
         if (answerText_.size() >= 9) break;
         if (std::isdigit(static_cast<unsigned char>(character)) != 0) {
             answerText_ += character;
         }
     }
-    if (input.backspacePressed) eraseLastCharacter(answerText_);
+    if (input.backspacePressed && !answerText_.empty()) answerText_.pop_back();
 }
 
 void MentalMathGame::submitAnswer() {
     if (answerText_.empty()) return;
-
     lastAnswerCorrect_ = (std::atoi(answerText_.c_str()) == expectedAnswer_);
     if (lastAnswerCorrect_) ++correctCount_;
-
     answerFocused_ = false;
     phase_ = Phase::Feedback;
     feedbackTimer_ = 0.8f;
 }
 
-void MentalMathGame::update(float deltaSeconds, const GameInput& input,
-                            const Rect& area) {
+void MentalMathGame::update(float deltaSeconds, const GameInput& input) {
     if (phase_ == Phase::Done) return;
-
     if (phase_ == Phase::Feedback) {
         feedbackTimer_ -= std::max(0.0f, deltaSeconds);
         if (feedbackTimer_ <= 0.0f) {
             ++questionIndex_;
-            if (questionIndex_ >= kTotalQuestions) {
-                phase_ = Phase::Done;
-            } else {
+            if (questionIndex_ >= kTotalQuestions) phase_ = Phase::Done;
+            else {
                 phase_ = Phase::Question;
                 nextQuestion();
             }
@@ -106,20 +77,11 @@ void MentalMathGame::update(float deltaSeconds, const GameInput& input,
         return;
     }
 
-    const Rect field = answerFieldRect(area);
-    const Rect submit = submitButtonRect(area);
-
-    if (input.primaryPressed) {
-        answerFocused_ = field.contains(input.pointerX, input.pointerY);
-    }
-    if (input.cancelPressed) answerFocused_ = false;
-
+    if (input.focusTextField) answerFocused_ = true;
+    if (input.blurTextField) answerFocused_ = false;
     applyTextInput(input);
 
-    const bool clickedSubmit =
-        input.primaryPressed && submit.contains(input.pointerX, input.pointerY);
-    const bool submittedByKeyboard = answerFocused_ && input.confirmPressed;
-    if (input.submitPressed || clickedSubmit || submittedByKeyboard) {
+    if (input.submitPressed || (answerFocused_ && input.confirmPressed)) {
         submitAnswer();
     }
 }

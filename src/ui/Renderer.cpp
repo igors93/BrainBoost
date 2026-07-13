@@ -144,15 +144,15 @@ float Renderer::height() const {
 
 void Renderer::fillRect(const Rect& rect, Color color) {
     SDL_SetRenderDrawColor(sdl_, color.r, color.g, color.b, color.a);
-    const SDL_FRect area{rect.x, rect.y, rect.w, rect.h};
+    const SDL_FRect area{rect.x + translationX_, rect.y + translationY_, rect.w, rect.h};
     SDL_RenderFillRectF(sdl_, &area);
 }
 
 void Renderer::outlineRect(const Rect& rect, Color color, int thickness) {
     SDL_SetRenderDrawColor(sdl_, color.r, color.g, color.b, color.a);
     for (int i = 0; i < thickness; ++i) {
-        const SDL_FRect area{rect.x + static_cast<float>(i),
-                             rect.y + static_cast<float>(i),
+        const SDL_FRect area{rect.x + translationX_ + static_cast<float>(i),
+                             rect.y + translationY_ + static_cast<float>(i),
                              rect.w - static_cast<float>(i) * 2.0f,
                              rect.h - static_cast<float>(i) * 2.0f};
         SDL_RenderDrawRectF(sdl_, &area);
@@ -168,9 +168,11 @@ void Renderer::drawLine(float x1, float y1, float x2, float y2, Color color,
     for (int i = 0; i < thickness; ++i) {
         const float offset = static_cast<float>(i);
         if (mostlyHorizontal) {
-            SDL_RenderDrawLineF(sdl_, x1, y1 + offset, x2, y2 + offset);
+            SDL_RenderDrawLineF(sdl_, x1 + translationX_, y1 + translationY_ + offset,
+                               x2 + translationX_, y2 + translationY_ + offset);
         } else {
-            SDL_RenderDrawLineF(sdl_, x1 + offset, y1, x2 + offset, y2);
+            SDL_RenderDrawLineF(sdl_, x1 + translationX_ + offset, y1 + translationY_,
+                               x2 + translationX_ + offset, y2 + translationY_);
         }
     }
 }
@@ -231,8 +233,8 @@ const Renderer::Glyph& Renderer::glyph(uint32_t codepoint, int size, bool bold) 
 
 void Renderer::drawText(const std::string& text, float x, float y, int size,
                         Color color, bool bold) {
-    const float baseline = y + ascent(size, bold);
-    float pen = x;
+    const float baseline = y + translationY_ + ascent(size, bold);
+    float pen = x + translationX_;
 
     size_t i = 0;
     while (i < text.size()) {
@@ -302,4 +304,17 @@ float Renderer::drawTextWrapped(const std::string& text, float x, float y,
     if (!line.empty()) flushLine();
 
     return cursorY - y;
+}
+
+void Renderer::setClipRect(const Rect* rect) {
+    if (rect == nullptr) {
+        SDL_RenderSetClipRect(sdl_, nullptr);
+    } else {
+        SDL_Rect clip;
+        clip.x = static_cast<int>(rect->x);
+        clip.y = static_cast<int>(rect->y);
+        clip.w = static_cast<int>(rect->w);
+        clip.h = static_cast<int>(rect->h);
+        SDL_RenderSetClipRect(sdl_, &clip);
+    }
 }

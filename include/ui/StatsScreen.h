@@ -9,6 +9,6 @@ class Input;
 // Full statistics page: totals, score evolution and per-category details.
 class StatsScreen {
 public:
-    void render(AppContext& context, Renderer& renderer, const Input& input,
-                const Rect& area);
+    float render(AppContext& context, Renderer& renderer, const Input& input,
+                 const Rect& area);
 };

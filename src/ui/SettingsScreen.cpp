@@ -4,7 +4,7 @@
 #include "ui/Input.h"
 #include "ui/Renderer.h"
 
-void SettingsScreen::render(AppContext& context, Renderer& renderer,
+float SettingsScreen::render(AppContext& context, Renderer& renderer,
                             const Input& input, const Rect& area) {
     float y = area.y;
     renderer.drawText("Configurações", area.x, y, 26, Theme::kText, true);
@@ -41,7 +41,8 @@ void SettingsScreen::render(AppContext& context, Renderer& renderer,
     y += 152;
 
     // --- Data ---
-    const Rect dataPanel{area.x, y, area.w, area.bottom() - y};
+    const float dataHeight = std::max(320.0f, area.bottom() - y);
+    const Rect dataPanel{area.x, y, area.w, dataHeight};
     renderer.fillRect(dataPanel, Theme::kPanel);
     renderer.drawText("Zerar Dados", dataPanel.x + 16, dataPanel.y + 12, 16,
                       Theme::kText, true);
@@ -101,4 +102,6 @@ void SettingsScreen::render(AppContext& context, Renderer& renderer,
     drawResetOption("Zerar apenas histórico", ResetScope::History, rowY);
     drawResetOption("Zerar apenas conquistas", ResetScope::Achievements, rowY);
     drawResetOption("Restaurar nome padrão", ResetScope::ProfileName, rowY);
+
+    return (y + dataHeight) - area.y;
 }

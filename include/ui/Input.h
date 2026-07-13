@@ -12,10 +12,16 @@ public:
     void beginFrame();
     void handleEvent(const SDL_Event& event);
 
-    float mouseX() const { return mouseX_; }
-    float mouseY() const { return mouseY_; }
+    float mouseX() const { return mouseX_ + mouseOffsetX_; }
+    float mouseY() const { return mouseY_ + mouseOffsetY_; }
     bool mouseDown() const { return mouseDown_; }
     bool mousePressed() const { return mousePressed_; }
+
+    float scrollDeltaY() const { return scrollDeltaY_; }
+    void setMouseOffset(float dx, float dy) {
+        mouseOffsetX_ = dx;
+        mouseOffsetY_ = dy;
+    }
 
     // UTF-8 text typed this frame (already handles keyboard layout/accents).
     const std::string& textTyped() const { return textTyped_; }
@@ -26,8 +32,11 @@ public:
 private:
     float mouseX_ = 0.0f;
     float mouseY_ = 0.0f;
+    float mouseOffsetX_ = 0.0f;
+    float mouseOffsetY_ = 0.0f;
     bool mouseDown_ = false;
     bool mousePressed_ = false;
+    float scrollDeltaY_ = 0.0f;
     std::string textTyped_;
     bool backspacePressed_ = false;
     bool enterPressed_ = false;

@@ -4,25 +4,12 @@
 #include <cstdio>
 #include <string>
 
+#include "games/GameLayout.h"
 #include "ui/Renderer.h"
 #include "ui/Widgets.h"
 
-namespace {
-
-Rect startButtonRect(const Rect& area) {
-    return Rect{area.centerX() - 110.0f, area.y + 150.0f, 220.0f, 46.0f};
-}
-
-Rect reactionPanelRect(const Rect& area) {
-    return Rect{area.x + 16.0f, area.y + 48.0f, area.w - 32.0f,
-                area.h - 64.0f};
-}
-
-}  // namespace
-
 void ReactionTimeGame::render(Renderer& renderer, const Rect& area) const {
     const float cx = area.centerX();
-
     char progress[48];
     std::snprintf(progress, sizeof(progress), "Tentativa %d de %d",
                   std::min(trial_ + 1, kTotalTrials), kTotalTrials);
@@ -35,16 +22,15 @@ void ReactionTimeGame::render(Renderer& renderer, const Rect& area) const {
         renderer.drawTextCentered(
             "Clicar cedo demais consome a tentativa atual.", cx, area.y + 105,
             15, Theme::kTextMuted);
-        Widgets::drawButton(renderer, startButtonRect(area), "Começar",
-                            Theme::kButton, 17);
+        Widgets::drawButton(renderer, GameLayout::reactionStartButton(area),
+                            "Começar", Theme::kButton, 17);
         return;
     }
     if (phase_ == Phase::Done) return;
 
-    const Rect panel = reactionPanelRect(area);
+    const Rect panel = GameLayout::reactionPanel(area);
     Color panelColor = rgb(0x7F1D1D);
     std::string panelText = "Aguarde...";
-
     if (phase_ == Phase::Go) {
         panelColor = rgb(0x15803D);
         panelText = "CLIQUE AGORA!";
@@ -57,7 +43,6 @@ void ReactionTimeGame::render(Renderer& renderer, const Rect& area) const {
         std::snprintf(time, sizeof(time), "%.0f ms", reactionTimesMs_.back());
         panelText = time;
     }
-
     renderer.fillRect(panel, panelColor);
     renderer.drawTextCentered(panelText, panel.centerX(),
                               panel.centerY() - renderer.lineHeight(36) * 0.5f,

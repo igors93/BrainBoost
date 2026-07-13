@@ -4,8 +4,8 @@
 #include "ui/Input.h"
 #include "ui/Renderer.h"
 
-void AboutScreen::render(AppContext& context, Renderer& renderer, const Input& input,
-                         const Rect& area) {
+float AboutScreen::render(AppContext& context, Renderer& renderer, const Input& input,
+                          const Rect& area) {
     (void)context;
     (void)input;
 
@@ -33,4 +33,6 @@ void AboutScreen::render(AppContext& context, Renderer& renderer, const Input& i
     renderer.drawText(
         "Arquitetura modular: core (dados), games (jogos) e ui (interface).",
         panel.x + 20, panel.y + 226, 14, Theme::kTextMuted);
+
+    return (y + 300.0f) - area.y;
 }
