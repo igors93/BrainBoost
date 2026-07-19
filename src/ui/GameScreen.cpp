@@ -89,16 +89,24 @@ void GameScreen::renderResults(AppContext& context, Renderer& renderer,
     renderer.drawTextCentered(details, cx, y, 15, Theme::kTextMuted);
     y += 30;
 
-    char xp[32];
-    std::snprintf(xp, sizeof(xp), "+%d XP", result.xpEarned);
+    char xp[48];
+    std::snprintf(xp, sizeof(xp), "+%d XP pela partida", result.xpEarned);
     renderer.drawTextCentered(xp, cx, y, 24, Theme::kAccent, true);
     y += 40;
 
-    for (const AchievementDef* achievement : context.lastUnlocks) {
+    for (const AchievementUnlockResult& unlock : context.lastUnlocks) {
         char unlocked[128];
-        std::snprintf(unlocked, sizeof(unlocked),
-                      "Conquista desbloqueada: %s (+%d XP)",
-                      achievement->title.c_str(), achievement->xpReward);
+        if (unlock.rewardGranted) {
+            std::snprintf(unlocked, sizeof(unlocked),
+                          "Conquista desbloqueada: %s (+%d XP)",
+                          unlock.achievement->title.c_str(), unlock.xpGranted);
+        } else {
+            // Re-unlocked after a partial reset: the reward was already
+            // received once, so no XP is announced.
+            std::snprintf(unlocked, sizeof(unlocked),
+                          "Conquista desbloqueada novamente: %s",
+                          unlock.achievement->title.c_str());
+        }
         renderer.drawTextCentered(unlocked, cx, y, 15, Theme::kWarning);
         y += 24;
     }

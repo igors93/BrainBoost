@@ -43,7 +43,9 @@ void testValidatedMapConversion() {
     UserProfile profile;
     profile.fromMap(values);
     TEST_CHECK(profile.name == "Igor");
-    TEST_CHECK(profile.xp() == 0);  // Out-of-range input is rejected.
+    // Values above the field maximum saturate (savenum policy) instead of
+    // being silently zeroed; negative input is rejected and stays at 0.
+    TEST_CHECK(profile.xp() == profile.maxXp());
     TEST_CHECK(profile.streakDays() == 0);
     TEST_CHECK(profile.achievements().size() == 2);
     TEST_CHECK(profile.hasAchievement("first_win"));

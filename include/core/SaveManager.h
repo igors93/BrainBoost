@@ -11,6 +11,10 @@ enum class SaveLoadStatus {
     FileNotFound,
     UnsupportedVersion,
     Corrupted,
+    // The main save is corrupted but the backup was written by a newer
+    // version or could not be read: everything is preserved untouched and
+    // persistence stays read-only until the situation is resolved.
+    BackupProtected,
     IoError
 };
 
@@ -47,6 +51,11 @@ public:
     // quarantine, no backup restore). Used by the legacy-path migration.
     static SaveLoadResult inspectFile(const std::string& path,
                                       UserProfile& profile, Statistics& stats);
+
+    // Moves `path` to the next free ".corrupted[.N]" sibling so it is
+    // preserved for diagnosis. Returns true when the file no longer blocks
+    // its original name (including when it did not exist).
+    static bool quarantine(const std::string& path);
 
     bool load(UserProfile& profile, Statistics& stats) const;
 

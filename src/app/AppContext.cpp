@@ -60,6 +60,16 @@ void AppContext::loadProgress() {
                 "O arquivo de progresso não pôde ser lido e foi protegido contra sobrescrita.";
             return;
 
+        case SaveLoadStatus::BackupProtected:
+            profile.reset();
+            stats.resetAll();
+            lastSaveSucceeded = false;
+            lastSaveError =
+                "O progresso está corrompido e o backup é incompatível (versão "
+                "mais nova ou ilegível). Ambos foram preservados e nada será "
+                "sobrescrito.";
+            return;
+
         case SaveLoadStatus::Corrupted:
             profile.reset();
             stats.resetAll();

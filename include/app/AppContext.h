@@ -29,7 +29,7 @@ struct AppContext {
     std::unique_ptr<Game> activeGame;
     std::string activeGameId;
     bool resultApplied = false;
-    std::vector<const AchievementDef*> lastUnlocks;
+    std::vector<AchievementUnlockResult> lastUnlocks;
     std::chrono::steady_clock::time_point activeGameStartedAt{};
 
     // Persistence state. Unsupported or unreadable saves are opened read-only

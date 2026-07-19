@@ -1,5 +1,7 @@
 #include "core/Statistics.h"
 
+#include "core/SaveNumbers.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
@@ -33,45 +35,6 @@ int saturatingAdd(int left, int right) {
         return std::numeric_limits<int>::max();
     }
     return left + right;
-}
-
-bool parseInt(const std::string& text, int& output) {
-    try {
-        std::size_t parsed = 0;
-        const long long value = std::stoll(text, &parsed, 10);
-        if (parsed != text.size() || value < std::numeric_limits<int>::min() ||
-            value > std::numeric_limits<int>::max()) {
-            return false;
-        }
-        output = static_cast<int>(value);
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
-bool parseInt64(const std::string& text, std::int64_t& output) {
-    try {
-        std::size_t parsed = 0;
-        const long long value = std::stoll(text, &parsed, 10);
-        if (parsed != text.size()) return false;
-        output = static_cast<std::int64_t>(value);
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
-bool parseFiniteFloat(const std::string& text, float& output) {
-    try {
-        std::size_t parsed = 0;
-        const float value = std::stof(text, &parsed);
-        if (parsed != text.size() || !std::isfinite(value)) return false;
-        output = value;
-        return true;
-    } catch (...) {
-        return false;
-    }
 }
 
 std::vector<std::string> split(const std::string& value, char delimiter) {
@@ -137,7 +100,8 @@ bool parseSessionRecord(const std::string& serialized, SessionRecord& record) {
     const std::vector<std::string> fields = split(serialized, ',');
     if (fields.size() != 8 || !isSafeGameId(fields[0])) return false;
 
-    int categoryValue = 0;
+    constexpr int kIntMax = std::numeric_limits<int>::max();
+    std::int64_t categoryValue = 0;
     int score = 0;
     int correct = 0;
     int total = 0;
@@ -145,22 +109,28 @@ bool parseSessionRecord(const std::string& serialized, SessionRecord& record) {
     int duration = 0;
     std::int64_t timestamp = 0;
 
-    if (!parseInt(fields[1], categoryValue) || categoryValue < 0 ||
-        categoryValue >= kCategoryCount || !parseInt64(fields[2], timestamp) ||
-        timestamp < 0 || !parseInt(fields[3], score) || !parseInt(fields[4], correct) ||
-        !parseInt(fields[5], total) || !parseInt(fields[6], difficulty) ||
-        !parseInt(fields[7], duration)) {
+    // The category is an enum index and the timestamp orders the history:
+    // out-of-range or negative values invalidate the record. The remaining
+    // fields are safely normalized, so they saturate into their valid range.
+    if (!savenum::parseNonNegativeExact(fields[1], kCategoryCount - 1,
+                                        categoryValue) ||
+        !savenum::parseNonNegative(fields[2], INT64_MAX, timestamp) ||
+        !savenum::parseSaturatingInt(fields[3], 0, 100, score) ||
+        !savenum::parseSaturatingInt(fields[4], 0, kIntMax, correct) ||
+        !savenum::parseSaturatingInt(fields[5], 0, kIntMax, total) ||
+        !savenum::parseSaturatingInt(fields[6], 0, kIntMax, difficulty) ||
+        !savenum::parseSaturatingInt(fields[7], 0, kIntMax, duration)) {
         return false;
     }
 
     record.gameId = fields[0];
     record.category = static_cast<GameCategory>(categoryValue);
     record.timestamp = timestamp;
-    record.score = std::clamp(score, 0, 100);
-    record.total = std::max(0, total);
-    record.correct = std::clamp(correct, 0, record.total);
-    record.difficulty = std::max(0, difficulty);
-    record.durationSeconds = std::max(0, duration);
+    record.score = score;
+    record.total = total;
+    record.correct = std::min(correct, record.total);
+    record.difficulty = difficulty;
+    record.durationSeconds = duration;
     return true;
 }
 
@@ -311,22 +281,27 @@ void Statistics::toMap(KeyValueMap& out) const {
 void Statistics::fromMap(const KeyValueMap& in) {
     resetAll();
 
+    constexpr int kIntMax = std::numeric_limits<int>::max();
     if (const auto it = in.find("stats.total_games"); it != in.end()) {
         int value = 0;
-        if (parseInt(it->second, value)) totalGames_ = std::max(0, value);
+        if (savenum::parseNonNegativeInt(it->second, kIntMax, value)) {
+            totalGames_ = value;
+        }
     }
 
     for (int index = 0; index < kCategoryCount; ++index) {
         const std::string prefix = "stats.category." + std::to_string(index);
         if (const auto it = in.find(prefix + ".skill"); it != in.end()) {
             float skill = 0.0f;
-            if (parseFiniteFloat(it->second, skill)) {
+            if (savenum::parseFiniteFloat(it->second, skill)) {
                 categories_[index].skill = std::clamp(skill, 0.0f, 100.0f);
             }
         }
         if (const auto it = in.find(prefix + ".games"); it != in.end()) {
             int games = 0;
-            if (parseInt(it->second, games)) categories_[index].gamesPlayed = std::max(0, games);
+            if (savenum::parseNonNegativeInt(it->second, kIntMax, games)) {
+                categories_[index].gamesPlayed = games;
+            }
         }
     }
 
@@ -346,11 +321,10 @@ void Statistics::fromMap(const KeyValueMap& in) {
         int integerValue = 0;
         float floatValue = 0.0f;
         if (field == "averageScore") {
-            if (parseFiniteFloat(value, floatValue)) {
+            if (savenum::parseFiniteFloat(value, floatValue)) {
                 stats.averageScore = std::clamp(floatValue, 0.0f, 100.0f);
             }
-        } else if (parseInt(value, integerValue)) {
-            integerValue = std::max(0, integerValue);
+        } else if (savenum::parseNonNegativeInt(value, kIntMax, integerValue)) {
             if (field == "sessions") stats.sessions = integerValue;
             else if (field == "bestScore") stats.bestScore = std::clamp(integerValue, 0, 100);
             else if (field == "mostRecentScore") {
@@ -378,7 +352,7 @@ void Statistics::fromMap(const KeyValueMap& in) {
                 std::int64_t legacyTimestamp = 1;
                 for (const std::string& value : split(serialized, ',')) {
                     float score = 0.0f;
-                    if (!value.empty() && parseFiniteFloat(value, score)) {
+                    if (!value.empty() && savenum::parseFiniteFloat(value, score)) {
                         SessionRecord record;
                         record.gameId = "legacy";
                         record.category = GameCategory::Memory;

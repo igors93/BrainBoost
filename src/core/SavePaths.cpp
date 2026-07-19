@@ -69,6 +69,16 @@ std::string SavePaths::quarantinePrefixFor(const std::string& mainFile) {
     return mainFile + ".corrupted";
 }
 
+namespace {
+
+SaveLoadStatus inspectStatus(const std::string& path) {
+    UserProfile ignoredProfile;
+    Statistics ignoredStats;
+    return SaveManager::inspectFile(path, ignoredProfile, ignoredStats).status;
+}
+
+}  // namespace
+
 SavePaths::MigrationResult SavePaths::migrateLegacyFrom(
     const std::string& legacyMainFile) const {
     const fs::path legacyMain(legacyMainFile);
@@ -79,9 +89,35 @@ SavePaths::MigrationResult SavePaths::migrateLegacyFrom(
         return MigrationResult::NotNeeded;
     }
 
-    // Progress already present in the new location is never overwritten.
-    ec.clear();
-    if (fs::exists(newMain, ec) || ec) return MigrationResult::NotNeeded;
+    // Classify what already lives in the new location before deciding: only
+    // a file with no recoverable or protected progress may be replaced.
+    bool newMainNeedsQuarantine = false;
+    switch (inspectStatus(mainFile())) {
+        case SaveLoadStatus::Success:
+        case SaveLoadStatus::RecoveredFromBackup:
+            return MigrationResult::NotNeeded;  // valid progress: never replace
+        case SaveLoadStatus::UnsupportedVersion:
+        case SaveLoadStatus::IoError:
+            // Possibly real progress this build cannot read: preserve it and
+            // let the load path keep it protected.
+            return MigrationResult::NotNeeded;
+        case SaveLoadStatus::Corrupted: {
+            const SaveLoadStatus backupStatus = inspectStatus(backupFile());
+            if (backupStatus == SaveLoadStatus::Success ||
+                backupStatus == SaveLoadStatus::UnsupportedVersion ||
+                backupStatus == SaveLoadStatus::IoError) {
+                // The new location can recover from its own backup (or must
+                // protect it); normal load handles both cases.
+                return MigrationResult::NotNeeded;
+            }
+            newMainNeedsQuarantine = true;
+            break;
+        }
+        case SaveLoadStatus::FileNotFound:
+            break;
+        case SaveLoadStatus::BackupProtected:
+            return MigrationResult::NotNeeded;  // inspectFile never emits this
+    }
 
     const fs::path legacyBackup(backupFor(legacyMainFile));
     ec.clear();
@@ -98,6 +134,12 @@ SavePaths::MigrationResult SavePaths::migrateLegacyFrom(
     ec.clear();
     fs::create_directories(fs::path(baseDirectory_), ec);
     if (ec) return MigrationResult::Failed;
+
+    // Only now that a validated legacy source exists is the corrupted new
+    // file moved aside — preserved for diagnosis, never silently replaced.
+    if (newMainNeedsQuarantine && !SaveManager::quarantine(mainFile())) {
+        return MigrationResult::Failed;
+    }
 
     const std::string source = mainValid ? legacyMainFile : legacyBackup.string();
     if (!copyValidatedFile(source, temporaryFile(), newMain)) {

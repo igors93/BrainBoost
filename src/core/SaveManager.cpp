@@ -1,12 +1,13 @@
 #include "core/SaveManager.h"
 
-#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <system_error>
 #include <utility>
 
+#include "core/Achievements.h"
+#include "core/SaveNumbers.h"
 #include "core/SavePaths.h"
 #include "core/Statistics.h"
 #include "core/UserProfile.h"
@@ -14,47 +15,20 @@
 namespace {
 namespace fs = std::filesystem;
 
-bool parseStrictInt(const std::string& text, int& value) {
-    try {
-        std::size_t parsed = 0;
-        const long long candidate = std::stoll(text, &parsed, 10);
-        if (parsed != text.size() || candidate < std::numeric_limits<int>::min() ||
-            candidate > std::numeric_limits<int>::max()) {
-            return false;
-        }
-        value = static_cast<int>(candidate);
-        return true;
-    } catch (...) {
-        return false;
-    }
-}
-
-bool isNonNegativeInteger(const std::string& text) {
-    try {
-        std::size_t parsed = 0;
-        return std::stoll(text, &parsed, 10) >= 0 && parsed == text.size();
-    } catch (...) {
-        return false;
-    }
-}
-
-bool isFiniteFloatText(const std::string& text) {
-    try {
-        std::size_t parsed = 0;
-        const float value = std::stof(text, &parsed);
-        return parsed == text.size() && std::isfinite(value);
-    } catch (...) {
-        return false;
-    }
+// A value is acceptable for a required integer field when it parses under
+// the shared savenum rules — the same rules fromMap() uses, so validation
+// can never accept a value that deserialization would silently drop.
+bool isValidRequiredInteger(const std::string& text) {
+    std::int64_t ignored = 0;
+    return savenum::parseNonNegative(text, INT64_MAX, ignored);
 }
 
 // Structural validation: a file is only accepted when every field the writer
 // always emits for `version` is present and every required numeric value
-// parses as a non-negative number. This rejects empty, comment-only,
+// parses under the shared savenum rules. This rejects empty, comment-only,
 // version-only and truncated files before they can silently reset progress.
-// Out-of-range but parseable values (e.g. XP above the cap) are still
-// normalized later by fromMap(); only unparseable or negative required
-// values count as corruption.
+// Values above a field's maximum saturate (documented in SaveNumbers.h);
+// only unparseable or negative required values count as corruption.
 bool validateStructure(const KeyValueMap& values, int version,
                        std::string& issue) {
     static constexpr const char* kRequiredPresent[] = {
@@ -76,7 +50,7 @@ bool validateStructure(const KeyValueMap& values, int version,
             issue = std::string("missing required field ") + key;
             return false;
         }
-        if (!isNonNegativeInteger(it->second)) {
+        if (!isValidRequiredInteger(it->second)) {
             issue = std::string("invalid value for required field ") + key;
             return false;
         }
@@ -85,12 +59,14 @@ bool validateStructure(const KeyValueMap& values, int version,
     for (int index = 0; index < kCategoryCount; ++index) {
         const std::string prefix = "stats.category." + std::to_string(index);
         const auto skillIt = values.find(prefix + ".skill");
-        if (skillIt == values.end() || !isFiniteFloatText(skillIt->second)) {
+        float skillValue = 0.0f;
+        if (skillIt == values.end() ||
+            !savenum::parseFiniteFloat(skillIt->second, skillValue)) {
             issue = "missing or invalid " + prefix + ".skill";
             return false;
         }
         const auto gamesIt = values.find(prefix + ".games");
-        if (gamesIt == values.end() || !isNonNegativeInteger(gamesIt->second)) {
+        if (gamesIt == values.end() || !isValidRequiredInteger(gamesIt->second)) {
             issue = "missing or invalid " + prefix + ".games";
             return false;
         }
@@ -145,11 +121,17 @@ SaveLoadResult loadSingleFile(const fs::path& path, UserProfile& profile,
                 false};
     }
 
-    int version = 0;
-    if (!parseStrictInt(versionIt->second, version) || version < 1) {
+    // The version is parsed exactly (no saturation): an overflowing version
+    // is garbage, not a plausible future version.
+    std::int64_t parsedVersion = 0;
+    if (!savenum::parseNonNegativeExact(versionIt->second,
+                                        std::numeric_limits<int>::max(),
+                                        parsedVersion) ||
+        parsedVersion < 1) {
         return {SaveLoadStatus::Corrupted, 0,
                 "Invalid save.version value.", false};
     }
+    const int version = static_cast<int>(parsedVersion);
 
     if (version > SaveManager::kCurrentSaveVersion) {
         return {SaveLoadStatus::UnsupportedVersion, version,
@@ -175,8 +157,12 @@ SaveLoadResult loadSingleFile(const fs::path& path, UserProfile& profile,
     }
 
     // Explicit v1 -> v2 migration: v1 granted achievement XP at unlock time,
-    // so every unlocked achievement's reward counts as already received.
-    if (version == 1) loadedProfile.markAllUnlockedRewardsReceived();
+    // so listed achievements and already-satisfied conditions (whose reward
+    // may have been kept through "reset achievements only") both count as
+    // already received.
+    if (version == 1) {
+        Achievements::markV1RewardsAsReceived(loadedProfile, loadedStats);
+    }
 
     profile = std::move(loadedProfile);
     stats = std::move(loadedStats);
@@ -244,6 +230,10 @@ SaveLoadResult SaveManager::inspectFile(const std::string& path,
     return loadSingleFile(fs::path(path), profile, stats);
 }
 
+bool SaveManager::quarantine(const std::string& path) {
+    return quarantineFile(fs::path(path));
+}
+
 SaveLoadResult SaveManager::loadDetailed(UserProfile& profile,
                                          Statistics& stats) const {
     const fs::path path(filePath_);
@@ -264,6 +254,23 @@ SaveLoadResult SaveManager::loadDetailed(UserProfile& profile,
     Statistics backupStats;
     const SaveLoadResult backupResult =
         loadSingleFile(backupPath, backupProfile, backupStats);
+
+    // A backup this build cannot read may still hold the only recoverable
+    // progress: leave both files exactly as they are (not even quarantining
+    // the main) and keep persistence read-only.
+    if (backupResult.status == SaveLoadStatus::UnsupportedVersion ||
+        backupResult.status == SaveLoadStatus::IoError) {
+        const char* reason =
+            backupResult.status == SaveLoadStatus::UnsupportedVersion
+                ? "was created by a newer BrainBoost version"
+                : "could not be read";
+        return {SaveLoadStatus::BackupProtected, backupResult.detectedVersion,
+                "The main save is corrupted and the backup " +
+                    std::string(reason) +
+                    "; both files are preserved and nothing will be "
+                    "overwritten.",
+                false};
+    }
 
     fs::path quarantinedPath;
     if (!quarantineFile(path, &quarantinedPath)) {
@@ -307,6 +314,25 @@ bool SaveManager::save(const UserProfile& profile,
     const fs::path destination(filePath_);
     const fs::path temporaryPath = SavePaths::temporaryFor(filePath_);
     const fs::path backupPath = SavePaths::backupFor(filePath_);
+
+    // Refuse to save while the backup holds progress this build cannot read
+    // (newer version or I/O error): a successful save would eventually
+    // rotate the new file over that backup and destroy it.
+    {
+        std::error_code backupEc;
+        const bool backupExists = fs::exists(backupPath, backupEc);
+        if (backupEc) return false;
+        if (backupExists) {
+            UserProfile existingBackupProfile;
+            Statistics existingBackupStats;
+            const SaveLoadResult backupState = loadSingleFile(
+                backupPath, existingBackupProfile, existingBackupStats);
+            if (backupState.status == SaveLoadStatus::UnsupportedVersion ||
+                backupState.status == SaveLoadStatus::IoError) {
+                return false;
+            }
+        }
+    }
 
     if (destination.has_parent_path()) {
         std::error_code ec;

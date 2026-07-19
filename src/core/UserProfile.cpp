@@ -1,5 +1,7 @@
 #include "core/UserProfile.h"
 
+#include "core/SaveNumbers.h"
+
 #include <algorithm>
 #include <ctime>
 #include <sstream>
@@ -24,19 +26,6 @@ std::int64_t daysSinceEpoch() {
 
 bool isSafeAchievementId(const std::string& id) {
     return !id.empty() && id.find_first_of(",\r\n=") == std::string::npos;
-}
-
-std::int64_t parseNonNegativeInt64(const std::string& value,
-                                   std::int64_t fallback,
-                                   std::int64_t maximum) {
-    try {
-        std::size_t parsed = 0;
-        const long long result = std::stoll(value, &parsed, 10);
-        if (parsed != value.size()) return fallback;
-        return std::clamp<std::int64_t>(result, 0, maximum);
-    } catch (...) {
-        return fallback;
-    }
 }
 
 }  // namespace
@@ -117,15 +106,21 @@ void UserProfile::fromMap(const KeyValueMap& in) {
     }
 
     if (const auto it = in.find("profile.xp"); it != in.end()) {
-        xp_ = static_cast<int>(parseNonNegativeInt64(it->second, 0, kMaxXp));
+        int xp = 0;
+        if (savenum::parseNonNegativeInt(it->second, kMaxXp, xp)) xp_ = xp;
     }
     if (const auto it = in.find("profile.streak"); it != in.end()) {
-        streakDays_ = static_cast<int>(parseNonNegativeInt64(
-            it->second, 0, std::numeric_limits<int>::max()));
+        int streak = 0;
+        if (savenum::parseNonNegativeInt(
+                it->second, std::numeric_limits<int>::max(), streak)) {
+            streakDays_ = streak;
+        }
     }
     if (const auto it = in.find("profile.last_played_day"); it != in.end()) {
-        lastPlayedDay_ = parseNonNegativeInt64(
-            it->second, 0, std::numeric_limits<std::int64_t>::max());
+        std::int64_t day = 0;
+        if (savenum::parseNonNegative(it->second, INT64_MAX, day)) {
+            lastPlayedDay_ = day;
+        }
     }
 
     if (const auto it = in.find("profile.achievements"); it != in.end()) {

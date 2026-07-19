@@ -4,11 +4,11 @@ add_executable(UserProfileTest core/UserProfileTest.cpp ../src/core/UserProfile.
 target_include_directories(UserProfileTest PRIVATE ../include)
 add_test(NAME UserProfileTest COMMAND UserProfileTest)
 
-add_executable(SaveManagerTest core/SaveManagerTest.cpp ../src/core/SaveManager.cpp ../src/core/SavePaths.cpp ../src/core/UserProfile.cpp ../src/core/Statistics.cpp)
+add_executable(SaveManagerTest core/SaveManagerTest.cpp ../src/core/SaveManager.cpp ../src/core/SavePaths.cpp ../src/core/Achievements.cpp ../src/core/UserProfile.cpp ../src/core/Statistics.cpp)
 target_include_directories(SaveManagerTest PRIVATE ../include)
 add_test(NAME SaveManagerTest COMMAND SaveManagerTest)
 
-add_executable(SavePathsTest core/SavePathsTest.cpp ../src/core/SavePaths.cpp ../src/core/SaveManager.cpp ../src/core/UserProfile.cpp ../src/core/Statistics.cpp)
+add_executable(SavePathsTest core/SavePathsTest.cpp ../src/core/SavePaths.cpp ../src/core/SaveManager.cpp ../src/core/Achievements.cpp ../src/core/UserProfile.cpp ../src/core/Statistics.cpp)
 target_include_directories(SavePathsTest PRIVATE ../include)
 add_test(NAME SavePathsTest COMMAND SavePathsTest)
 

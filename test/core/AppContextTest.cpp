@@ -110,6 +110,91 @@ void testRecoveredBackupRemainsWritable() {
     fs::remove_all(directory);
 }
 
+// Corrupted main + future-version backup: the whole session must stay
+// read-only — saving after load, finishing games and the shutdown save all
+// refuse, and both files stay byte-identical.
+void testProtectedBackupBlocksAllWrites() {
+    const fs::path directory = uniqueTestDirectory();
+    fs::create_directories(directory);
+    const fs::path savePath = directory / "save.ini";
+    const fs::path backupPath = savePath.string() + ".bak";
+    const std::string corruptedMain = "save.version=2\n";
+    const std::string futureBackup = "save.version=999\nprofile.xp=9999\n";
+    { std::ofstream file(savePath); file << corruptedMain; }
+    { std::ofstream file(backupPath); file << futureBackup; }
+
+    AppContext context;
+    context.saveManager = SaveManager(savePath.string());
+    context.loadProgress();
+    TEST_CHECK(context.lastLoadStatus == SaveLoadStatus::BackupProtected);
+    TEST_CHECK(context.persistenceReadOnly);
+    TEST_CHECK(!context.lastSaveSucceeded);
+    TEST_CHECK(!context.lastSaveError.empty());  // situation is reported
+
+    // Saving right after the load refuses.
+    TEST_CHECK(!context.saveProgress());
+
+    // Finishing a game also cannot write.
+    {
+        auto games = context.registry.games();
+        context.startGame(games.front());
+    }
+    context.applyResultOnce();
+    TEST_CHECK(!context.lastSaveSucceeded);
+
+    // The shutdown-time save refuses as well.
+    TEST_CHECK(!context.saveProgress());
+
+    TEST_CHECK(readAll(savePath) == corruptedMain);
+    TEST_CHECK(readAll(backupPath) == futureBackup);
+    fs::remove_all(directory);
+}
+
+// The result screen reads context.lastUnlocks: entries must carry whether
+// the XP was actually granted, and the profile XP delta must match exactly
+// what the screen reports.
+void testResultScreenDataMatchesGrantedXp() {
+    const fs::path directory = uniqueTestDirectory();
+    fs::create_directories(directory);
+    AppContext context;
+    context.saveManager = SaveManager((directory / "save.ini").string());
+    context.loadProgress();
+
+    const GameInfo front = context.registry.games().front();
+    GameResult seeded;
+    seeded.score = 60;
+    for (int i = 0; i < 4; ++i) {
+        context.stats.recordResult(front.id, front.category, seeded, 1000 + i);
+    }
+
+    // 5th session: real unlocks, every reported entry granted XP.
+    context.startGame(front);
+    context.applyResultOnce();
+    TEST_CHECK(!context.lastUnlocks.empty());
+    for (const AchievementUnlockResult& unlock : context.lastUnlocks) {
+        TEST_CHECK(unlock.firstUnlock);
+        TEST_CHECK(unlock.rewardGranted);
+        TEST_CHECK(unlock.xpGranted == unlock.achievement->xpReward);
+    }
+    context.closeGame();
+
+    // After a partial reset the achievements reappear without XP, and the
+    // profile only gains the game XP — never a hidden achievement reward.
+    context.profile.resetAchievementsOnly();
+    context.startGame(front);
+    const int xpBefore = context.profile.xp();
+    const int gameXp = context.activeGame->result().xpEarned;
+    context.applyResultOnce();
+    TEST_CHECK(!context.lastUnlocks.empty());
+    for (const AchievementUnlockResult& unlock : context.lastUnlocks) {
+        TEST_CHECK(!unlock.firstUnlock);
+        TEST_CHECK(!unlock.rewardGranted);
+        TEST_CHECK(unlock.xpGranted == 0);
+    }
+    TEST_CHECK(context.profile.xp() == xpBefore + gameXp);
+    fs::remove_all(directory);
+}
+
 }  // namespace
 
 int main() {
@@ -117,6 +202,8 @@ int main() {
     testActiveGameMetadataSurvivesTemporaryCatalogCopy();
     testUnsupportedSaveIsNeverOverwritten();
     testSaveBeforeLoadNeverTouchesTheSaveFile();
+    testProtectedBackupBlocksAllWrites();
+    testResultScreenDataMatchesGrantedXp();
     testRecoveredBackupRemainsWritable();
     std::cout << "All AppContext tests passed!\n";
     return 0;
