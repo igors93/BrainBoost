@@ -22,6 +22,7 @@ void applyDefaultSystemName(UserProfile& profile) {
 
 void AppContext::loadProgress() {
     const SaveLoadResult result = saveManager.loadDetailed(profile, stats);
+    progressLoaded = true;
     lastLoadStatus = result.status;
     persistenceReadOnly = !result.safeToWrite;
     lastSaveSucceeded = true;
@@ -77,6 +78,13 @@ void AppContext::loadProgress() {
 }
 
 bool AppContext::saveProgress() {
+    if (!progressLoaded) {
+        lastSaveSucceeded = false;
+        lastSaveError =
+            "O progresso ainda não foi carregado e não será sobrescrito.";
+        return false;
+    }
+
     if (persistenceReadOnly) {
         lastSaveSucceeded = false;
         if (lastSaveError.empty()) {

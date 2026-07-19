@@ -17,13 +17,20 @@
 // to the sidebar plus the currently selected screen.
 class Application {
 public:
+    // Initializes SDL, window, renderer and fonts, then loads progress as the
+    // last step. When it returns false, progress was never loaded and
+    // shutdown() will not touch the save files.
     bool init();
     void run();
+    // Safe after a partial init() and when called more than once; only
+    // releases what was actually initialized.
     void shutdown();
 
 private:
     float renderContent(const Rect& area, float deltaSeconds);
 
+    bool sdlInitialized_ = false;
+    bool shutdownComplete_ = false;
     SDL_Window* window_ = nullptr;
     Renderer renderer_;
     Input input_;

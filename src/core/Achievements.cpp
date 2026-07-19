@@ -61,7 +61,12 @@ std::vector<const AchievementDef*> evaluate(UserProfile& profile, const Statisti
         if (!rule.isMet(profile, stats)) continue;
 
         profile.unlockAchievement(rule.def.id);
-        profile.addXp(rule.def.xpReward);
+        // The reward ledger outlives partial resets, so each achievement's
+        // XP is granted at most once for the lifetime of this progress.
+        if (!profile.hasReceivedReward(rule.def.id)) {
+            profile.addXp(rule.def.xpReward);
+            profile.markRewardReceived(rule.def.id);
+        }
         unlockedNow.push_back(&rule.def);
     }
     return unlockedNow;

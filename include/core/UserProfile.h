@@ -33,6 +33,19 @@ public:
     void unlockAchievement(const std::string& id);
     const std::vector<std::string>& achievements() const { return achievements_; }
 
+    // Permanent reward ledger: which achievement rewards were ever granted
+    // for this progress. Kept separate from the unlocked list so partial
+    // resets can never lead to the same XP being granted twice.
+    bool hasReceivedReward(const std::string& id) const;
+    void markRewardReceived(const std::string& id);
+    const std::vector<std::string>& rewardedAchievements() const {
+        return rewardedAchievements_;
+    }
+
+    // Save v1 -> v2 migration: v1 files granted XP at unlock time, so every
+    // achievement already unlocked counts as already rewarded.
+    void markAllUnlockedRewardsReceived();
+
     void toMap(KeyValueMap& out) const;
     void fromMap(const KeyValueMap& in);
 
@@ -48,4 +61,5 @@ private:
     int streakDays_ = 0;
     std::int64_t lastPlayedDay_ = 0;  // local calendar day number, 0 = never played
     std::vector<std::string> achievements_;
+    std::vector<std::string> rewardedAchievements_;
 };

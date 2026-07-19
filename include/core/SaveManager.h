@@ -27,15 +27,26 @@ struct SaveLoadResult {
 };
 
 // Persists progress locally as a versioned key=value text file.
+//
+// Version history:
+//   1 — profile.* and stats.* fields; achievement XP granted at unlock time.
+//   2 — adds profile.rewarded_achievements (the permanent reward ledger).
+//       Loading a v1 file migrates it by marking every unlocked achievement
+//       as already rewarded, so old saves never re-grant XP.
 class SaveManager {
 public:
-    static constexpr int kCurrentSaveVersion = 1;
+    static constexpr int kCurrentSaveVersion = 2;
 
     explicit SaveManager(std::string filePath = "brainboost_save.ini");
 
     // Loads the main save and, when it is corrupted, attempts recovery from
     // the validated .bak file. Output objects change only after a valid load.
     SaveLoadResult loadDetailed(UserProfile& profile, Statistics& stats) const;
+
+    // Loads and validates `path` with no recovery side effects (no
+    // quarantine, no backup restore). Used by the legacy-path migration.
+    static SaveLoadResult inspectFile(const std::string& path,
+                                      UserProfile& profile, Statistics& stats);
 
     bool load(UserProfile& profile, Statistics& stats) const;
 

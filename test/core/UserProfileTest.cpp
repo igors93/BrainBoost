@@ -54,10 +54,14 @@ void testResetScopes() {
     UserProfile profile;
     profile.addXp(1000);
     profile.unlockAchievement("first_win");
+    profile.markRewardReceived("first_win");
     profile.name = "Igor";
 
+    // Clearing only the achievements keeps the reward ledger, so the same
+    // reward can never be granted twice after a partial reset.
     profile.resetAchievementsOnly();
     TEST_CHECK(!profile.hasAchievement("first_win"));
+    TEST_CHECK(profile.hasReceivedReward("first_win"));
     TEST_CHECK(profile.xp() == 1000);
     TEST_CHECK(profile.name == "Igor");
 
@@ -68,6 +72,25 @@ void testResetScopes() {
     profile.reset();
     TEST_CHECK(profile.xp() == 0);
     TEST_CHECK(profile.name == "Jogador");
+    TEST_CHECK(!profile.hasReceivedReward("first_win"));
+}
+
+void testRewardLedgerSerializationRoundTrip() {
+    UserProfile profile;
+    profile.unlockAchievement("first_steps");
+    profile.markRewardReceived("first_steps");
+    profile.markRewardReceived("veteran");
+    profile.resetAchievementsOnly();
+
+    KeyValueMap map;
+    profile.toMap(map);
+    TEST_CHECK(map.at("profile.rewarded_achievements") == "first_steps,veteran");
+
+    UserProfile loaded;
+    loaded.fromMap(map);
+    TEST_CHECK(!loaded.hasAchievement("first_steps"));
+    TEST_CHECK(loaded.hasReceivedReward("first_steps"));
+    TEST_CHECK(loaded.hasReceivedReward("veteran"));
 }
 
 int main() {
@@ -76,6 +99,7 @@ int main() {
     testStreak();
     testValidatedMapConversion();
     testResetScopes();
+    testRewardLedgerSerializationRoundTrip();
     std::cout << "All UserProfile tests passed!\n";
     return 0;
 }

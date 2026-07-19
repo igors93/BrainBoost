@@ -18,7 +18,9 @@ struct AppContext {
     UserProfile profile;
     Statistics stats;
     GameRegistry registry;
-    SaveManager saveManager{"save/brainboost_save.ini"};
+    // Application::init() replaces this with the stable user-directory path
+    // (see SavePaths) before loadProgress() runs; tests inject temp paths.
+    SaveManager saveManager;
 
     ScreenId screen = ScreenId::Home;
     bool quitRequested = false;
@@ -36,6 +38,11 @@ struct AppContext {
     bool persistenceReadOnly = false;
     std::string lastSaveError;
     bool lastSaveSucceeded = true;
+
+    // True only after loadProgress() ran. saveProgress() refuses to write
+    // before that, so an init failure can never replace an existing save
+    // with a default profile.
+    bool progressLoaded = false;
 
     void loadProgress();
     bool saveProgress();

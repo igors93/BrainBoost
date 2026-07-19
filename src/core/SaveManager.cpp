@@ -1,11 +1,13 @@
 #include "core/SaveManager.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
 #include <system_error>
 #include <utility>
 
+#include "core/SavePaths.h"
 #include "core/Statistics.h"
 #include "core/UserProfile.h"
 
@@ -25,6 +27,81 @@ bool parseStrictInt(const std::string& text, int& value) {
     } catch (...) {
         return false;
     }
+}
+
+bool isNonNegativeInteger(const std::string& text) {
+    try {
+        std::size_t parsed = 0;
+        return std::stoll(text, &parsed, 10) >= 0 && parsed == text.size();
+    } catch (...) {
+        return false;
+    }
+}
+
+bool isFiniteFloatText(const std::string& text) {
+    try {
+        std::size_t parsed = 0;
+        const float value = std::stof(text, &parsed);
+        return parsed == text.size() && std::isfinite(value);
+    } catch (...) {
+        return false;
+    }
+}
+
+// Structural validation: a file is only accepted when every field the writer
+// always emits for `version` is present and every required numeric value
+// parses as a non-negative number. This rejects empty, comment-only,
+// version-only and truncated files before they can silently reset progress.
+// Out-of-range but parseable values (e.g. XP above the cap) are still
+// normalized later by fromMap(); only unparseable or negative required
+// values count as corruption.
+bool validateStructure(const KeyValueMap& values, int version,
+                       std::string& issue) {
+    static constexpr const char* kRequiredPresent[] = {
+        "profile.name", "profile.achievements", "stats.history"};
+    static constexpr const char* kRequiredNonNegative[] = {
+        "profile.xp", "profile.streak", "profile.last_played_day",
+        "stats.total_games"};
+
+    for (const char* key : kRequiredPresent) {
+        if (values.find(key) == values.end()) {
+            issue = std::string("missing required field ") + key;
+            return false;
+        }
+    }
+
+    for (const char* key : kRequiredNonNegative) {
+        const auto it = values.find(key);
+        if (it == values.end()) {
+            issue = std::string("missing required field ") + key;
+            return false;
+        }
+        if (!isNonNegativeInteger(it->second)) {
+            issue = std::string("invalid value for required field ") + key;
+            return false;
+        }
+    }
+
+    for (int index = 0; index < kCategoryCount; ++index) {
+        const std::string prefix = "stats.category." + std::to_string(index);
+        const auto skillIt = values.find(prefix + ".skill");
+        if (skillIt == values.end() || !isFiniteFloatText(skillIt->second)) {
+            issue = "missing or invalid " + prefix + ".skill";
+            return false;
+        }
+        const auto gamesIt = values.find(prefix + ".games");
+        if (gamesIt == values.end() || !isNonNegativeInteger(gamesIt->second)) {
+            issue = "missing or invalid " + prefix + ".games";
+            return false;
+        }
+    }
+
+    if (version >= 2 &&
+        values.find("profile.rewarded_achievements") == values.end()) {
+        issue = "missing required field profile.rewarded_achievements";
+        return false;
+    }
+    return true;
 }
 
 void removeIfPresent(const fs::path& path) {
@@ -61,18 +138,28 @@ SaveLoadResult loadSingleFile(const fs::path& path, UserProfile& profile,
                 "An I/O error occurred while reading the save.", false};
     }
 
+    const auto versionIt = values.find("save.version");
+    if (versionIt == values.end()) {
+        return {SaveLoadStatus::Corrupted, 0,
+                "Missing save.version (empty, comment-only or truncated file).",
+                false};
+    }
+
     int version = 0;
-    if (const auto versionIt = values.find("save.version");
-        versionIt != values.end()) {
-        if (!parseStrictInt(versionIt->second, version) || version < 0) {
-            return {SaveLoadStatus::Corrupted, 0,
-                    "Invalid save.version value.", false};
-        }
+    if (!parseStrictInt(versionIt->second, version) || version < 1) {
+        return {SaveLoadStatus::Corrupted, 0,
+                "Invalid save.version value.", false};
     }
 
     if (version > SaveManager::kCurrentSaveVersion) {
         return {SaveLoadStatus::UnsupportedVersion, version,
                 "The save was created by a newer BrainBoost version.", false};
+    }
+
+    std::string structuralIssue;
+    if (!validateStructure(values, version, structuralIssue)) {
+        return {SaveLoadStatus::Corrupted, version,
+                "Structurally invalid save: " + structuralIssue + ".", false};
     }
 
     UserProfile loadedProfile;
@@ -87,16 +174,21 @@ SaveLoadResult loadSingleFile(const fs::path& path, UserProfile& profile,
                 "Unknown save parsing error.", false};
     }
 
+    // Explicit v1 -> v2 migration: v1 granted achievement XP at unlock time,
+    // so every unlocked achievement's reward counts as already received.
+    if (version == 1) loadedProfile.markAllUnlockedRewardsReceived();
+
     profile = std::move(loadedProfile);
     stats = std::move(loadedStats);
     return {SaveLoadStatus::Success, version, {}, true};
 }
 
 fs::path nextQuarantinePath(const fs::path& original) {
-    fs::path candidate = original.string() + ".corrupted";
+    const std::string prefix = SavePaths::quarantinePrefixFor(original.string());
+    fs::path candidate = prefix;
     std::error_code ec;
     for (int suffix = 1; fs::exists(candidate, ec) && !ec; ++suffix) {
-        candidate = original.string() + ".corrupted." + std::to_string(suffix);
+        candidate = prefix + "." + std::to_string(suffix);
     }
     return candidate;
 }
@@ -146,6 +238,12 @@ bool replaceWithTemporaryFile(const fs::path& temporaryPath,
 
 SaveManager::SaveManager(std::string filePath) : filePath_(std::move(filePath)) {}
 
+SaveLoadResult SaveManager::inspectFile(const std::string& path,
+                                        UserProfile& profile,
+                                        Statistics& stats) {
+    return loadSingleFile(fs::path(path), profile, stats);
+}
+
 SaveLoadResult SaveManager::loadDetailed(UserProfile& profile,
                                          Statistics& stats) const {
     const fs::path path(filePath_);
@@ -161,7 +259,7 @@ SaveLoadResult SaveManager::loadDetailed(UserProfile& profile,
 
     if (mainResult.status != SaveLoadStatus::Corrupted) return mainResult;
 
-    const fs::path backupPath = path.string() + ".bak";
+    const fs::path backupPath = SavePaths::backupFor(filePath_);
     UserProfile backupProfile;
     Statistics backupStats;
     const SaveLoadResult backupResult =
@@ -207,8 +305,8 @@ bool SaveManager::save(const UserProfile& profile,
     stats.toMap(values);
 
     const fs::path destination(filePath_);
-    const fs::path temporaryPath = destination.string() + ".tmp";
-    const fs::path backupPath = destination.string() + ".bak";
+    const fs::path temporaryPath = SavePaths::temporaryFor(filePath_);
+    const fs::path backupPath = SavePaths::backupFor(filePath_);
 
     if (destination.has_parent_path()) {
         std::error_code ec;

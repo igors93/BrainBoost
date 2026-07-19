@@ -1,15 +1,38 @@
 #include "app/Application.h"
 
 #include <cstdio>
+#include <string>
 
+#include "core/SavePaths.h"
 #include "ui/Theme.h"
 #include "ui/Widgets.h"
+
+namespace {
+
+// Stable, user-specific data directory (e.g. ~/.local/share/BrainBoost/...).
+// Falls back to the legacy working-directory "save" folder only when SDL
+// cannot provide one.
+std::string resolveUserDataDirectory() {
+    char* prefPath = SDL_GetPrefPath("BrainBoost", "BrainBoost");
+    if (prefPath == nullptr) {
+        std::fprintf(stderr,
+                     "SDL_GetPrefPath failed (%s); falling back to ./save\n",
+                     SDL_GetError());
+        return "save";
+    }
+    std::string directory(prefPath);
+    SDL_free(prefPath);
+    return directory;
+}
+
+}  // namespace
 
 bool Application::init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         return false;
     }
+    sdlInitialized_ = true;
 
     window_ = SDL_CreateWindow("BrainBoost — Treinamento Cognitivo",
                                SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280,
@@ -22,6 +45,20 @@ bool Application::init() {
     if (!renderer_.init(window_)) return false;
 
     SDL_StartTextInput();  // text fields receive SDL_TEXTINPUT events
+
+    // Persistence starts only after every fallible resource above succeeded,
+    // so an init failure can never touch the progress files.
+    const SavePaths savePaths(resolveUserDataDirectory());
+    const auto migration = savePaths.migrateLegacyFrom(
+        std::string("save/") + SavePaths::kSaveFileName);
+    if (migration == SavePaths::MigrationResult::Migrated) {
+        std::fprintf(stderr, "Progress migrated from ./save to %s\n",
+                     savePaths.baseDirectory().c_str());
+    } else if (migration == SavePaths::MigrationResult::Failed) {
+        std::fprintf(stderr,
+                     "Legacy progress migration failed; legacy files kept.\n");
+    }
+    context_.saveManager = SaveManager(savePaths.mainFile());
     context_.loadProgress();
     return true;
 }
@@ -112,12 +149,20 @@ void Application::run() {
 }
 
 void Application::shutdown() {
-    context_.saveProgress();
+    if (shutdownComplete_) return;
+    shutdownComplete_ = true;
+
+    // Progress is only saved when it was actually loaded; a failed init can
+    // therefore never replace an existing save with a default profile.
+    if (context_.progressLoaded) context_.saveProgress();
 
     renderer_.shutdown();
     if (window_ != nullptr) {
         SDL_DestroyWindow(window_);
         window_ = nullptr;
     }
-    SDL_Quit();
+    if (sdlInitialized_) {
+        SDL_Quit();
+        sdlInitialized_ = false;
+    }
 }

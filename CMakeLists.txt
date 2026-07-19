@@ -23,6 +23,7 @@ add_executable(brainboost
     src/core/Statistics.cpp
     src/core/Achievements.cpp
     src/core/SaveManager.cpp
+    src/core/SavePaths.cpp
     src/games/MentalMathGame.cpp
     src/games/MentalMathGameRender.cpp
     src/games/NumberMemoryGame.cpp

@@ -51,6 +51,40 @@ void testUnsupportedSaveIsNeverOverwritten() {
     fs::remove_all(directory);
 }
 
+// The original bug: Application::shutdown() saved unconditionally, so an
+// init failure before loadProgress() (SDL, window, renderer or fonts)
+// replaced a valid save with a default profile. saveProgress() must refuse
+// to write while progressLoaded is false and leave the file byte-identical.
+void testSaveBeforeLoadNeverTouchesTheSaveFile() {
+    const fs::path directory = uniqueTestDirectory();
+    fs::create_directories(directory);
+    const fs::path savePath = directory / "save.ini";
+    {
+        UserProfile profile;
+        Statistics stats;
+        profile.addXp(1234);
+        TEST_CHECK(SaveManager(savePath.string()).save(profile, stats));
+    }
+    const std::string original = readAll(savePath);
+
+    AppContext context;
+    context.saveManager = SaveManager(savePath.string());
+    // Simulates Application::shutdown() after init() failed before
+    // loadProgress() ran (exactly what main() does on init failure).
+    TEST_CHECK(!context.progressLoaded);
+    TEST_CHECK(!context.saveProgress());
+    TEST_CHECK(readAll(savePath) == original);
+    TEST_CHECK(!fs::exists(savePath.string() + ".tmp"));
+    TEST_CHECK(!fs::exists(savePath.string() + ".bak"));
+
+    // After a successful load the same context saves normally again.
+    context.loadProgress();
+    TEST_CHECK(context.progressLoaded);
+    TEST_CHECK(context.profile.xp() == 1234);
+    TEST_CHECK(context.saveProgress());
+    fs::remove_all(directory);
+}
+
 void testRecoveredBackupRemainsWritable() {
     const fs::path directory = uniqueTestDirectory();
     fs::create_directories(directory);
@@ -82,6 +116,7 @@ int main() {
     std::cout << "Running AppContextTest...\n";
     testActiveGameMetadataSurvivesTemporaryCatalogCopy();
     testUnsupportedSaveIsNeverOverwritten();
+    testSaveBeforeLoadNeverTouchesTheSaveFile();
     testRecoveredBackupRemainsWritable();
     std::cout << "All AppContext tests passed!\n";
     return 0;

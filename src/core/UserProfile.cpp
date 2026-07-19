@@ -72,18 +72,41 @@ void UserProfile::unlockAchievement(const std::string& id) {
     if (isSafeAchievementId(id) && !hasAchievement(id)) achievements_.push_back(id);
 }
 
+bool UserProfile::hasReceivedReward(const std::string& id) const {
+    return std::find(rewardedAchievements_.begin(), rewardedAchievements_.end(),
+                     id) != rewardedAchievements_.end();
+}
+
+void UserProfile::markRewardReceived(const std::string& id) {
+    if (isSafeAchievementId(id) && !hasReceivedReward(id)) {
+        rewardedAchievements_.push_back(id);
+    }
+}
+
+void UserProfile::markAllUnlockedRewardsReceived() {
+    for (const std::string& id : achievements_) markRewardReceived(id);
+}
+
+namespace {
+
+std::string joinIds(const std::vector<std::string>& ids) {
+    std::ostringstream joined;
+    for (std::size_t i = 0; i < ids.size(); ++i) {
+        if (i > 0) joined << ',';
+        joined << ids[i];
+    }
+    return joined.str();
+}
+
+}  // namespace
+
 void UserProfile::toMap(KeyValueMap& out) const {
     out["profile.name"] = name;
     out["profile.xp"] = std::to_string(xp_);
     out["profile.streak"] = std::to_string(streakDays_);
     out["profile.last_played_day"] = std::to_string(lastPlayedDay_);
-
-    std::ostringstream joined;
-    for (std::size_t i = 0; i < achievements_.size(); ++i) {
-        if (i > 0) joined << ',';
-        joined << achievements_[i];
-    }
-    out["profile.achievements"] = joined.str();
+    out["profile.achievements"] = joinIds(achievements_);
+    out["profile.rewarded_achievements"] = joinIds(rewardedAchievements_);
 }
 
 void UserProfile::fromMap(const KeyValueMap& in) {
@@ -113,6 +136,14 @@ void UserProfile::fromMap(const KeyValueMap& in) {
         }
     }
 
+    if (const auto it = in.find("profile.rewarded_achievements"); it != in.end()) {
+        std::istringstream stream(it->second);
+        std::string id;
+        while (std::getline(stream, id, ',')) {
+            markRewardReceived(id);
+        }
+    }
+
     const std::int64_t today = daysSinceEpoch();
     if (today > 0 && lastPlayedDay_ != 0 && today - lastPlayedDay_ > 1) {
         streakDays_ = 0;
@@ -124,9 +155,13 @@ void UserProfile::reset() {
     streakDays_ = 0;
     lastPlayedDay_ = 0;
     achievements_.clear();
+    rewardedAchievements_.clear();
     name = "Jogador";
 }
 
+// Only the unlocked list is cleared. The reward ledger survives on purpose:
+// conditions that are still met will re-unlock the achievements, but their
+// XP reward is never granted a second time.
 void UserProfile::resetAchievementsOnly() { achievements_.clear(); }
 
 void UserProfile::resetNameOnly() { name = "Jogador"; }

@@ -21,7 +21,10 @@ namespace Achievements {
 const std::vector<AchievementDef>& all();
 
 // Checks unlock conditions against the current progress, unlocks anything
-// newly earned (also granting its XP) and returns what was unlocked now.
+// newly earned and returns what was unlocked now. The XP reward is granted
+// only the first time each achievement is ever unlocked for this progress
+// (tracked by the profile's reward ledger), so re-unlocking after a partial
+// reset never grants XP again.
 std::vector<const AchievementDef*> evaluate(UserProfile& profile, const Statistics& stats);
 
 }  // namespace Achievements
