@@ -165,6 +165,7 @@ void FillInPuzzleGame::generate(int startingDifficulty) {
     for (int i = 0; i < givenSlotCount && i < static_cast<int>(order.size()); ++i) {
         revealSlot(order[static_cast<std::size_t>(i)]);
     }
+    settleIncidentallyCompletedSlots();
 }
 
 void FillInPuzzleGame::revealSlot(int slotIndex) {
@@ -305,6 +306,12 @@ void FillInPuzzleGame::tryCommitSelectedSlot() {
         slot.solved = true;
         markBankEntryUsed(typed);
         cursorOffset_ = 0;
+        // Locking this slot's cells can complete a crossing slot too — every
+        // one of its own cells might now be filled purely as a side effect,
+        // without ever being individually typed and validated. Without this,
+        // that slot's bank number never gets struck and the puzzle never
+        // registers as finished even once the grid looks full.
+        settleIncidentallyCompletedSlots();
         solved_ = std::all_of(slots_.begin(), slots_.end(),
                               [](const Slot& s) { return s.solved; });
     } else {
@@ -315,6 +322,39 @@ void FillInPuzzleGame::tryCommitSelectedSlot() {
             if (!locked_[cellIndex(r, c)]) playerGrid_[cellIndex(r, c)] = '\0';
         }
         cursorOffset_ = 0;
+    }
+}
+
+void FillInPuzzleGame::settleIncidentallyCompletedSlots() {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (Slot& slot : slots_) {
+            if (slot.solved) continue;
+
+            bool fullyFilled = true;
+            for (int i = 0; i < slot.length && fullyFilled; ++i) {
+                const auto [r, c] = cellAt(slot, i);
+                if (playerGrid_[cellIndex(r, c)] == '\0') fullyFilled = false;
+            }
+            if (!fullyFilled) continue;
+
+            std::string typed;
+            typed.reserve(static_cast<std::size_t>(slot.length));
+            for (int i = 0; i < slot.length; ++i) {
+                const auto [r, c] = cellAt(slot, i);
+                typed += playerGrid_[cellIndex(r, c)];
+            }
+            if (typed != slot.solution) continue;  // leftover guess, not a mistake to flag
+
+            for (int i = 0; i < slot.length; ++i) {
+                const auto [r, c] = cellAt(slot, i);
+                locked_[cellIndex(r, c)] = true;
+            }
+            slot.solved = true;
+            markBankEntryUsed(typed);
+            changed = true;
+        }
     }
 }
 

@@ -98,6 +98,12 @@ private:
     void typeDigit(char digit);
     void backspace();
     void tryCommitSelectedSlot();
+    // Marks solved any not-yet-solved slot whose cells all happen to already
+    // hold its correct target (e.g. filled in purely by crossing slots),
+    // repeating since one such settle can complete another in turn. Never
+    // flags a mismatch as a mistake — it only ever gives credit that is
+    // already earned.
+    void settleIncidentallyCompletedSlots();
     // Slots covering (row, col); -1 when there is none in that orientation.
     int slotAt(int row, int col, Orientation orientation) const;
     bool slotCovers(const Slot& slot, int row, int col) const;

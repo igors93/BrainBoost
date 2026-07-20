@@ -38,6 +38,71 @@ void typeSlotSolution(FillInPuzzleGame& game, int slotIndex) {
     }
 }
 
+bool acrossSlotCoversCell(const FillInPuzzleGame& game, int row, int col) {
+    for (int i = 0; i < game.slotCount(); ++i) {
+        if (game.slotOrientation(i) != FillInPuzzleGame::Orientation::Across) continue;
+        if (game.slotRow(i) == row && col >= game.slotCol(i) &&
+            col < game.slotCol(i) + game.slotLength(i)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A down slot every one of whose cells also belongs to some across slot:
+// solving every across slot that crosses it fills all of its cells as a
+// pure side effect, without it ever being selected directly.
+int findFullyCrossedDownSlot(const FillInPuzzleGame& game) {
+    for (int i = 0; i < game.slotCount(); ++i) {
+        if (game.slotOrientation(i) != FillInPuzzleGame::Orientation::Down) continue;
+        bool allCrossed = true;
+        for (int k = 0; k < game.slotLength(i) && allCrossed; ++k) {
+            if (!acrossSlotCoversCell(game, game.slotRow(i) + k, game.slotCol(i))) {
+                allCrossed = false;
+            }
+        }
+        if (allCrossed) return i;
+    }
+    return -1;
+}
+
+// Regression: a slot whose cells all end up correct purely because every
+// crossing slot got solved (it was never itself selected and typed) must
+// still be recognized as solved — its bank number struck, and the whole
+// puzzle finished once everything else is too. See
+// settleIncidentallyCompletedSlots().
+void testIncidentallyCompletedSlotIsRecognizedAsSolved() {
+    int target = -1;
+    std::uint32_t chosenSeed = 0;
+    for (std::uint32_t seed = 1; seed <= 50 && target < 0; ++seed) {
+        FillInPuzzleGame candidate(seed, 0);
+        target = findFullyCrossedDownSlot(candidate);
+        chosenSeed = seed;
+    }
+    TEST_CHECK(target >= 0);
+
+    FillInPuzzleGame game(chosenSeed, 0);
+    for (int i = 0; i < game.slotCount(); ++i) {
+        if (i == target) continue;
+        if (!game.slotSolved(i)) typeSlotSolution(game, i);
+    }
+
+    const std::string solution = game.debugSolutionFor(target);
+    for (int k = 0; k < game.slotLength(target); ++k) {
+        const int row = game.slotRow(target) + k;
+        const int col = game.slotCol(target);
+        TEST_CHECK(game.displayedChar(row, col) == solution[static_cast<std::size_t>(k)]);
+    }
+
+    TEST_CHECK(game.slotSolved(target));
+    const int usedForTarget = static_cast<int>(
+        std::count_if(game.bank().begin(), game.bank().end(), [&](const auto& entry) {
+            return entry.used && entry.number == solution;
+        }));
+    TEST_CHECK(usedForTarget >= 1);
+    TEST_CHECK(game.isFinished());
+}
+
 // Regression: clicking a different cell that still belongs to the currently
 // selected slot must only move the cursor there, never toggle to the
 // crossing slot — otherwise digits typed after that click silently land in
@@ -239,6 +304,7 @@ void testDeterministicGenerationForSameSeedAndDifficulty() {
 
 int main() {
     std::cout << "Running FillInPuzzleGameTest...\n";
+    testIncidentallyCompletedSlotIsRecognizedAsSolved();
     testClickingADifferentCellInSameSlotMovesCursorNotOrientation();
     testEveryOpenCellBelongsToASlot();
     testDifficultySizingIsMonotonicAndClamped();
