@@ -2,55 +2,57 @@
 
 #include <cstdint>
 #include <random>
-#include <string>
+#include <vector>
 
 #include "games/Game.h"
 
-class NumberMemoryGame : public Game {
+class SpatialMemoryGame : public Game {
 public:
-    NumberMemoryGame();
-    explicit NumberMemoryGame(std::uint32_t seed);
+    SpatialMemoryGame();
+    explicit SpatialMemoryGame(std::uint32_t seed);
     // startingDifficulty is the persisted adaptive level (see
     // GameStats::difficultyLevel); it is clamped to [0, kMaxDifficulty] and
     // added on top of kStartLength.
-    NumberMemoryGame(std::uint32_t seed, int startingDifficulty);
+    SpatialMemoryGame(std::uint32_t seed, int startingDifficulty);
 
     void update(float deltaSeconds, const GameInput& input) override;
     void render(Renderer& renderer, const Rect& area) const override;
     bool isFinished() const override;
     GameResult result() const override;
 
-    const std::string& currentSequence() const { return sequence_; }
-    const std::string& currentRecallText() const { return recallText_; }
     int currentRound() const { return round_; }
     int successes() const { return successes_; }
     int sequenceLength() const { return sequenceLength_; }
-    bool isMemorizing() const { return phase_ == Phase::Memorize; }
     bool isAwaitingRecall() const { return phase_ == Phase::Recall; }
-    bool isShowingFeedback() const { return phase_ == Phase::Feedback; }
+    // Cell the player must click next to keep the recall correct; only
+    // meaningful while isAwaitingRecall() is true.
+    int expectedCell() const { return sequence_[static_cast<std::size_t>(userIndex_)]; }
 
 private:
-    enum class Phase { Memorize, Recall, Feedback, Done };
+    enum class Phase { StartDelay, ShowSequence, Recall, Feedback, Done };
     static constexpr int kTotalRounds = 5;
     static constexpr int kStartLength = 3;
-    static constexpr int kMaxDifficulty = 12;
+    static constexpr int kMaxDifficulty = 10;
     static constexpr int kMinLength = 1;
     static constexpr int kMissesToRetreat = 2;
 
     void startRound();
-    float memorizeSeconds() const;
-    void applyTextInput(const GameInput& input);
-    void submitRecall();
 
     std::mt19937 rng_;
-    Phase phase_ = Phase::Memorize;
+    Phase phase_ = Phase::StartDelay;
     int round_ = 0;
     int successes_ = 0;
     int sequenceLength_ = kStartLength;
     int consecutiveMisses_ = 0;
-    std::string sequence_;
-    std::string recallText_;
-    bool recallFocused_ = false;
+
+    std::vector<int> sequence_;
+    int sequenceIndex_ = 0;
+    int userIndex_ = 0;
+
     bool lastRoundCorrect_ = false;
     float phaseTimer_ = 0.0f;
+    
+    int hoverIndex_ = -1;
+    int clickIndex_ = -1;
+    float clickTimer_ = 0.0f;
 };

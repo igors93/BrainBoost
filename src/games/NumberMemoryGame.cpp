@@ -6,6 +6,13 @@
 NumberMemoryGame::NumberMemoryGame() : rng_(std::random_device{}()) { startRound(); }
 NumberMemoryGame::NumberMemoryGame(std::uint32_t seed) : rng_(seed) { startRound(); }
 
+NumberMemoryGame::NumberMemoryGame(std::uint32_t seed, int startingDifficulty)
+    : rng_(seed),
+      sequenceLength_(kStartLength +
+                      std::clamp(startingDifficulty, 0, kMaxDifficulty)) {
+    startRound();
+}
+
 float NumberMemoryGame::memorizeSeconds() const {
     return 1.2f + 0.45f * static_cast<float>(sequenceLength_);
 }
@@ -60,7 +67,16 @@ void NumberMemoryGame::update(float deltaSeconds, const GameInput& input) {
             ++round_;
             if (round_ >= kTotalRounds) phase_ = Phase::Done;
             else {
-                if (lastRoundCorrect_) ++sequenceLength_;
+                // Bidirectional staircase: a hit grows the sequence right
+                // away, but only sustained misses shrink it back, so one
+                // unlucky round does not immediately punish the player.
+                if (lastRoundCorrect_) {
+                    ++sequenceLength_;
+                    consecutiveMisses_ = 0;
+                } else if (++consecutiveMisses_ >= kMissesToRetreat) {
+                    sequenceLength_ = std::max(kMinLength, sequenceLength_ - 1);
+                    consecutiveMisses_ = 0;
+                }
                 startRound();
             }
         }

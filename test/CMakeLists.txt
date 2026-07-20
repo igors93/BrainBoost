@@ -20,12 +20,41 @@ add_executable(StatisticsTest core/StatisticsTest.cpp ../src/core/Statistics.cpp
 target_include_directories(StatisticsTest PRIVATE ../include)
 add_test(NAME StatisticsTest COMMAND StatisticsTest)
 
+add_executable(AdaptiveDifficultyTest core/AdaptiveDifficultyTest.cpp)
+target_include_directories(AdaptiveDifficultyTest PRIVATE ../include)
+add_test(NAME AdaptiveDifficultyTest COMMAND AdaptiveDifficultyTest)
+
+add_executable(RecommendationsTest
+    core/RecommendationsTest.cpp
+    games/GameRenderStubs.cpp
+    ../src/core/GameRegistry.cpp
+    ../src/core/Statistics.cpp
+    ../src/core/Recommendations.cpp
+    ../src/games/FillInPuzzleGame.cpp
+    ../src/games/MentalMathGame.cpp
+    ../src/games/NumberMemoryGame.cpp
+    ../src/games/ReactionTimeGame.cpp
+    ../src/games/SequenceLogicGame.cpp
+    ../src/games/SpatialMemoryGame.cpp
+)
+target_include_directories(RecommendationsTest PRIVATE ../include)
+add_test(NAME RecommendationsTest COMMAND RecommendationsTest)
+
+add_executable(FillInPuzzleGameTest
+    games/FillInPuzzleGameTest.cpp
+    games/GameRenderStubs.cpp
+    ../src/games/FillInPuzzleGame.cpp
+)
+target_include_directories(FillInPuzzleGameTest PRIVATE ../include)
+add_test(NAME FillInPuzzleGameTest COMMAND FillInPuzzleGameTest)
+
 add_executable(MathGameTest
     games/MathGameTest.cpp
     games/GameRenderStubs.cpp
     ../src/games/MentalMathGame.cpp
     ../src/games/NumberMemoryGame.cpp
     ../src/games/SequenceLogicGame.cpp
+    ../src/games/SpatialMemoryGame.cpp
 )
 target_include_directories(MathGameTest PRIVATE ../include)
 add_test(NAME MathGameTest COMMAND MathGameTest)
@@ -43,10 +72,12 @@ add_executable(AppContextTest
     ../src/core/SaveManager.cpp
     ../src/core/SavePaths.cpp
     ../src/core/GameRegistry.cpp
+    ../src/games/FillInPuzzleGame.cpp
     ../src/games/MentalMathGame.cpp
     ../src/games/NumberMemoryGame.cpp
     ../src/games/ReactionTimeGame.cpp
     ../src/games/SequenceLogicGame.cpp
+    ../src/games/SpatialMemoryGame.cpp
     ../src/core/Achievements.cpp
 )
 target_include_directories(AppContextTest PRIVATE ../include)

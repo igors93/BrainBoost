@@ -3,6 +3,7 @@
 #include <cstdio>
 
 #include "app/AppContext.h"
+#include "games/FillInPuzzleGame.h"
 #include "games/GameInput.h"
 #include "games/GameLayout.h"
 #include "ui/Input.h"
@@ -12,11 +13,30 @@
 namespace {
 
 GameInput makeGameInput(const Input& input, const std::string& gameId,
-                        const Rect& panel) {
+                        const Rect& panel, const Game* activeGame) {
     GameInput gameInput;
     gameInput.confirmPressed = input.enterPressed();
     gameInput.backspacePressed = input.backspacePressed();
     gameInput.text = input.textTyped();
+
+    const float x = input.mouseX();
+    const float y = input.mouseY();
+
+    if (gameId == "logic_sequence") {
+        for (int index = 0; index < 4; ++index) {
+            if (GameLayout::sequenceOptionButton(panel, index).contains(x, y)) {
+                gameInput.hoverIndex = index;
+                break;
+            }
+        }
+    } else if (gameId == "visual_memory") {
+        for (int index = 0; index < 9; ++index) {
+            if (GameLayout::spatialMemoryGridCell(panel, index).contains(x, y)) {
+                gameInput.hoverIndex = index;
+                break;
+            }
+        }
+    }
 
     if (!input.mousePressed()) {
         if (gameId == "quick_reaction" && input.enterPressed()) {
@@ -24,9 +44,6 @@ GameInput makeGameInput(const Input& input, const std::string& gameId,
         }
         return gameInput;
     }
-
-    const float x = input.mouseX();
-    const float y = input.mouseY();
 
     if (gameId == "mental_math") {
         if (GameLayout::mentalMathAnswerField(panel).contains(x, y)) {
@@ -54,6 +71,28 @@ GameInput makeGameInput(const Input& input, const std::string& gameId,
             if (GameLayout::sequenceOptionButton(panel, index).contains(x, y)) {
                 gameInput.optionIndex = index;
                 break;
+            }
+        }
+    } else if (gameId == "visual_memory") {
+        for (int index = 0; index < 9; ++index) {
+            if (GameLayout::spatialMemoryGridCell(panel, index).contains(x, y)) {
+                gameInput.optionIndex = index;
+                break;
+            }
+        }
+    } else if (gameId == "fill_in_puzzle") {
+        if (const auto* puzzle = dynamic_cast<const FillInPuzzleGame*>(activeGame)) {
+            const int rows = puzzle->rows();
+            const int cols = puzzle->cols();
+            bool found = false;
+            for (int row = 0; row < rows && !found; ++row) {
+                for (int col = 0; col < cols && !found; ++col) {
+                    if (puzzle->isBlocked(row, col)) continue;
+                    if (GameLayout::fillInGridCell(panel, row, col, rows, cols).contains(x, y)) {
+                        gameInput.optionIndex = row * cols + col;
+                        found = true;
+                    }
+                }
             }
         }
     }
@@ -164,7 +203,8 @@ void GameScreen::render(AppContext& context, Renderer& renderer,
 
     if (!context.activeGame->isFinished()) {
         context.activeGame->update(
-            deltaSeconds, makeGameInput(input, context.activeGameId, panel));
+            deltaSeconds,
+            makeGameInput(input, context.activeGameId, panel, context.activeGame.get()));
     }
 
     if (context.activeGame->isFinished()) renderResults(context, renderer, input, panel);

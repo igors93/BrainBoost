@@ -15,4 +15,5 @@ struct GameInput {
     bool submitPressed = false;
     bool primaryActionPressed = false;
     int optionIndex = -1;
+    int hoverIndex = -1;
 };

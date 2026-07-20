@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "ui/Rect.h"
 
 namespace GameLayout {
@@ -39,6 +41,42 @@ inline Rect sequenceOptionButton(const Rect& area, int index) {
     const float firstX = area.centerX() - rowWidth * 0.5f;
     return {firstX + index * (kWidth + kSpacing), area.y + 165.0f,
             kWidth, kHeight};
+}
+
+inline Rect spatialMemoryGridCell(const Rect& area, int index) {
+    constexpr float kSize = 80.0f;
+    constexpr float kSpacing = 16.0f;
+    const float gridWidth = 3 * kSize + 2 * kSpacing;
+    const float startX = area.centerX() - gridWidth * 0.5f;
+    const float startY = area.y + 130.0f;
+    
+    int row = index / 3;
+    int col = index % 3;
+    
+    return {startX + col * (kSize + kSpacing),
+            startY + row * (kSize + kSpacing),
+            kSize, kSize};
+}
+
+// Left portion of the panel reserved for the puzzle grid; the remainder is
+// the side number bank.
+inline Rect fillInGridArea(const Rect& area) {
+    return {area.x, area.y, area.w * 0.55f, area.h};
+}
+
+// Same cell geometry is used for hit-testing (GameScreen) and drawing
+// (FillInPuzzleGameRender), so clicks always line up with what is drawn.
+inline Rect fillInGridCell(const Rect& area, int row, int col, int rows, int cols) {
+    const Rect gridArea = fillInGridArea(area);
+    const float maxDimension = static_cast<float>(std::max(rows, cols));
+    const float cellSize =
+        maxDimension > 0.0f ? std::min(gridArea.w, gridArea.h) / maxDimension : 0.0f;
+    const float gridWidth = cellSize * static_cast<float>(cols);
+    const float gridHeight = cellSize * static_cast<float>(rows);
+    const float startX = gridArea.x + (gridArea.w - gridWidth) * 0.5f;
+    const float startY = gridArea.y + (gridArea.h - gridHeight) * 0.5f;
+    return {startX + static_cast<float>(col) * cellSize, startY + static_cast<float>(row) * cellSize,
+            cellSize, cellSize};
 }
 
 }  // namespace GameLayout

@@ -6,6 +6,8 @@
 
 #include "../TestUtils.h"
 #include "app/AppContext.h"
+#include "games/FillInPuzzleGame.h"
+#include "games/NumberMemoryGame.h"
 
 namespace {
 namespace fs = std::filesystem;
@@ -195,6 +197,66 @@ void testResultScreenDataMatchesGrantedXp() {
     fs::remove_all(directory);
 }
 
+// startGame must seed the session from the persisted adaptive level instead
+// of the game's fixed baseline, and applyResultOnce must move that level for
+// the *next* session (see AdaptiveDifficulty / GameStats::difficultyLevel).
+void testStartGameSeedsAndUpdatesAdaptiveDifficulty() {
+    const fs::path directory = uniqueTestDirectory();
+    fs::create_directories(directory);
+    AppContext context;
+    context.saveManager = SaveManager((directory / "save.ini").string());
+    context.loadProgress();
+
+    const GameInfo front = context.registry.games().front();  // number_memory
+    TEST_CHECK(front.id == "number_memory");
+    TEST_CHECK(context.stats.forGame(front.id).difficultyLevel == 0.0f);
+
+    // Two strong sessions push the adaptive level up by two steps.
+    GameResult strong;
+    strong.score = 90;
+    strong.total = 5;
+    strong.correct = 5;
+    context.stats.recordResult(front.id, front.category, strong, 1000);
+    context.stats.recordResult(front.id, front.category, strong, 1001);
+    TEST_CHECK(context.stats.forGame(front.id).difficultyLevel == 2.0f);
+
+    context.startGame(front);
+    auto* game = dynamic_cast<NumberMemoryGame*>(context.activeGame.get());
+    TEST_CHECK(game != nullptr);
+    TEST_CHECK(game->sequenceLength() == 5);  // kStartLength (3) + level (2)
+    context.closeGame();
+
+    fs::remove_all(directory);
+}
+
+// The catalog entry, factory and adaptive-difficulty threading all need to
+// line up for a brand-new game exactly like they do for the built-in ones.
+void testFillInPuzzleStartsThroughTheCatalogWithPersistedDifficulty() {
+    const fs::path directory = uniqueTestDirectory();
+    fs::create_directories(directory);
+    AppContext context;
+    context.saveManager = SaveManager((directory / "save.ini").string());
+    context.loadProgress();
+
+    const GameInfo* puzzle = context.registry.findById("fill_in_puzzle");
+    TEST_CHECK(puzzle != nullptr);
+    TEST_CHECK(puzzle->isImplemented());
+
+    GameResult strong;
+    strong.score = 90;
+    context.stats.recordResult(puzzle->id, puzzle->category, strong, 1000);
+    context.stats.recordResult(puzzle->id, puzzle->category, strong, 1001);
+    TEST_CHECK(context.stats.forGame(puzzle->id).difficultyLevel == 2.0f);
+
+    context.startGame(*puzzle);
+    auto* game = dynamic_cast<FillInPuzzleGame*>(context.activeGame.get());
+    TEST_CHECK(game != nullptr);
+    TEST_CHECK(game->rows() == 11);  // kBaseSize (9) + persisted level (2)
+    context.closeGame();
+
+    fs::remove_all(directory);
+}
+
 }  // namespace
 
 int main() {
@@ -205,6 +267,8 @@ int main() {
     testProtectedBackupBlocksAllWrites();
     testResultScreenDataMatchesGrantedXp();
     testRecoveredBackupRemainsWritable();
+    testStartGameSeedsAndUpdatesAdaptiveDifficulty();
+    testFillInPuzzleStartsThroughTheCatalogWithPersistedDifficulty();
     std::cout << "All AppContext tests passed!\n";
     return 0;
 }

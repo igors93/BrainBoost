@@ -1,3 +1,4 @@
+#include <cmath>
 #include <ctime>
 #include <iostream>
 #include <limits>
@@ -100,6 +101,148 @@ void testInvalidSerializedDataIsNormalizedOrSkipped() {
     TEST_CHECK(stats.history()[0].durationSeconds == 0);
 }
 
+void testDifficultyLevelAdaptsAcrossSessionsAndPersists() {
+    Statistics stats;
+    GameResult strong;
+    strong.score = 90;
+    strong.total = 5;
+    strong.correct = 5;
+
+    stats.recordResult("mental_math", GameCategory::Reasoning, strong, 1000);
+    TEST_CHECK(stats.forGame("mental_math").difficultyLevel == 1.0f);
+    stats.recordResult("mental_math", GameCategory::Reasoning, strong, 1001);
+    TEST_CHECK(stats.forGame("mental_math").difficultyLevel == 2.0f);
+
+    GameResult weak;
+    weak.score = 10;
+    weak.total = 5;
+    weak.correct = 1;
+    stats.recordResult("mental_math", GameCategory::Reasoning, weak, 1002);
+    TEST_CHECK(stats.forGame("mental_math").difficultyLevel == 1.0f);
+
+    // The adaptive level survives a save/load round trip like any other
+    // per-game stat.
+    KeyValueMap values;
+    stats.toMap(values);
+    Statistics restored;
+    restored.fromMap(values);
+    TEST_CHECK(restored.forGame("mental_math").difficultyLevel == 1.0f);
+
+    // A never-played game reports the baseline (no adaptation yet).
+    TEST_CHECK(stats.forGame("never_played").difficultyLevel == 0.0f);
+}
+
+void testLastPlayedTimestampTracksMostRecentSessionAndPersists() {
+    Statistics stats;
+    TEST_CHECK(stats.forGame("mental_math").lastPlayedTimestamp == 0);
+
+    GameResult result;
+    result.score = 50;
+    stats.recordResult("mental_math", GameCategory::Reasoning, result, 1000);
+    TEST_CHECK(stats.forGame("mental_math").lastPlayedTimestamp == 1000);
+    stats.recordResult("mental_math", GameCategory::Reasoning, result, 2000);
+    TEST_CHECK(stats.forGame("mental_math").lastPlayedTimestamp == 2000);
+
+    KeyValueMap values;
+    stats.toMap(values);
+    Statistics restored;
+    restored.fromMap(values);
+    TEST_CHECK(restored.forGame("mental_math").lastPlayedTimestamp == 2000);
+
+    // A never-played game reports 0 (never played).
+    TEST_CHECK(stats.forGame("never_played").lastPlayedTimestamp == 0);
+}
+
+void testFirstSessionSetsAverageDifficultyDirectly() {
+    Statistics stats;
+    GameResult result;
+    result.score = 70;
+    result.difficulty = 4;
+    stats.recordResult("logic_sequence", GameCategory::Logic, result, 1000);
+    TEST_CHECK(stats.forCategory(GameCategory::Logic).averageDifficulty == 4.0f);
+    TEST_CHECK(stats.forCategory(GameCategory::Logic).skill == 70.0f);
+}
+
+// A session played above your own typical difficulty for a category counts
+// for more than the raw score alone would (an IRT-inspired nudge on top of
+// the score EMA — see recordResult()).
+void testSessionAboveOwnAverageDifficultyBoostsSkill() {
+    Statistics stats;
+    GameResult first;
+    first.score = 70;
+    first.difficulty = 2;
+    stats.recordResult("logic_sequence", GameCategory::Logic, first, 1000);
+
+    GameResult harder;
+    harder.score = 70;  // same score as before...
+    harder.difficulty = 10;  // ...but well above the average difficulty (2)
+    stats.recordResult("logic_sequence", GameCategory::Logic, harder, 1001);
+
+    const float flatEmaWouldBe = 70.0f * 0.7f + 70.0f * 0.3f;  // == 70, no bonus
+    TEST_CHECK(stats.forCategory(GameCategory::Logic).skill > flatEmaWouldBe + 0.01f);
+}
+
+// Symmetrically, a session played below your own typical difficulty counts
+// for less, even with an identical score.
+void testSessionBelowOwnAverageDifficultyLowersSkill() {
+    Statistics stats;
+    GameResult first;
+    first.score = 70;
+    first.difficulty = 10;
+    stats.recordResult("logic_sequence", GameCategory::Logic, first, 1000);
+
+    GameResult easier;
+    easier.score = 70;  // same score as before...
+    easier.difficulty = 0;  // ...but well below the average difficulty (10)
+    stats.recordResult("logic_sequence", GameCategory::Logic, easier, 1001);
+
+    const float flatEmaWouldBe = 70.0f * 0.7f + 70.0f * 0.3f;  // == 70, no penalty
+    TEST_CHECK(stats.forCategory(GameCategory::Logic).skill < flatEmaWouldBe - 0.01f);
+}
+
+// However extreme the difficulty swing, the bonus/penalty stays capped —
+// two wildly different jumps above the average produce the same skill.
+void testDifficultyBonusIsClampedForExtremeSwings() {
+    Statistics moderate;
+    GameResult first;
+    first.score = 70;
+    first.difficulty = 2;
+    moderate.recordResult("logic_sequence", GameCategory::Logic, first, 1000);
+    GameResult moderateJump;
+    moderateJump.score = 70;
+    moderateJump.difficulty = 10;  // delta 8: already beyond the cap
+    moderate.recordResult("logic_sequence", GameCategory::Logic, moderateJump, 1001);
+
+    Statistics extreme;
+    extreme.recordResult("logic_sequence", GameCategory::Logic, first, 1000);
+    GameResult extremeJump;
+    extremeJump.score = 70;
+    extremeJump.difficulty = 1000;  // delta 998: absurdly beyond the cap
+    extreme.recordResult("logic_sequence", GameCategory::Logic, extremeJump, 1001);
+
+    TEST_CHECK(std::fabs(moderate.forCategory(GameCategory::Logic).skill -
+                        extreme.forCategory(GameCategory::Logic).skill) < 0.01f);
+}
+
+void testAverageDifficultyPersistsThroughRoundTrip() {
+    Statistics stats;
+    GameResult result;
+    result.score = 60;
+    result.difficulty = 3;
+    stats.recordResult("logic_sequence", GameCategory::Logic, result, 1000);
+    GameResult second;
+    second.score = 60;
+    second.difficulty = 7;
+    stats.recordResult("logic_sequence", GameCategory::Logic, second, 1001);
+
+    KeyValueMap values;
+    stats.toMap(values);
+    Statistics restored;
+    restored.fromMap(values);
+    TEST_CHECK(std::fabs(restored.forCategory(GameCategory::Logic).averageDifficulty -
+                        stats.forCategory(GameCategory::Logic).averageDifficulty) < 0.001f);
+}
+
 void testRoundTrip() {
     Statistics original;
     GameResult result;
@@ -127,6 +270,13 @@ int main() {
     testSanitizedRecordingAndGameStats();
     testCalendarSummaries();
     testInvalidSerializedDataIsNormalizedOrSkipped();
+    testDifficultyLevelAdaptsAcrossSessionsAndPersists();
+    testLastPlayedTimestampTracksMostRecentSessionAndPersists();
+    testFirstSessionSetsAverageDifficultyDirectly();
+    testSessionAboveOwnAverageDifficultyBoostsSkill();
+    testSessionBelowOwnAverageDifficultyLowersSkill();
+    testDifficultyBonusIsClampedForExtremeSwings();
+    testAverageDifficultyPersistsThroughRoundTrip();
     testRoundTrip();
     std::cout << "All Statistics tests passed!\n";
     return 0;

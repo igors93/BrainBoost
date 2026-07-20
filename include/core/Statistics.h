@@ -15,6 +15,12 @@ using KeyValueMap = std::map<std::string, std::string>;
 struct CategoryStats {
     float skill = 0.0f;
     int gamesPlayed = 0;
+
+    // Running average of the difficulty level played in this category
+    // (see AdaptiveDifficulty). Lets recordResult() weigh a session played
+    // above your own typical difficulty a bit more than one played below
+    // it — a per-player, per-category reference point, not a fixed scale.
+    float averageDifficulty = 0.0f;
 };
 
 struct GameStats {
@@ -25,6 +31,15 @@ struct GameStats {
     int totalCorrect = 0;
     int totalAttempts = 0;
     int bestDifficulty = 0;
+
+    // Current adaptive difficulty level for this game: where the *next*
+    // session should start. Unlike bestDifficulty (a personal record), this
+    // rises and falls with recent performance — see AdaptiveDifficulty.
+    float difficultyLevel = 0.0f;
+
+    // Unix timestamp of the most recent completed session; 0 = never played.
+    // Feeds the "how long since you trained this" half of Recommendations.
+    std::int64_t lastPlayedTimestamp = 0;
 };
 
 struct SummaryStats {

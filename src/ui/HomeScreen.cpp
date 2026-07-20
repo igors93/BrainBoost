@@ -7,6 +7,7 @@
 #include <string>
 
 #include "app/AppContext.h"
+#include "core/Recommendations.h"
 #include "ui/Input.h"
 #include "ui/Renderer.h"
 #include "ui/Widgets.h"
@@ -70,10 +71,14 @@ float HomeScreen::renderHeader(AppContext& context, Renderer& renderer,
 float HomeScreen::renderGameGrid(AppContext& context, Renderer& renderer,
                                  const Input& input, const Rect& area) {
     auto games = context.registry.games();
+    const std::int64_t now = static_cast<std::int64_t>(std::time(nullptr));
+    // Same priority signal as "Treino de hoje" (weak/stale first), so the
+    // full catalog keeps nudging toward what's actually worth playing next
+    // instead of just repeating whatever category you already favor.
     std::stable_sort(games.begin(), games.end(),
                      [&](const GameInfo& a, const GameInfo& b) {
-                         return context.stats.forCategory(a.category).gamesPlayed >
-                                context.stats.forCategory(b.category).gamesPlayed;
+                         return Recommendations::priorityScore(a, context.stats, now) >
+                                Recommendations::priorityScore(b, context.stats, now);
                      });
 
     const float spacing = 12.0f;
@@ -97,6 +102,36 @@ float HomeScreen::renderGameGrid(AppContext& context, Renderer& renderer,
     const int rows =
         (static_cast<int>(games.size()) + columns - 1) / columns;
     return static_cast<float>(rows) * (cardHeight + spacing);
+}
+
+float HomeScreen::renderDailyTraining(AppContext& context, Renderer& renderer,
+                                     const Input& input, const Rect& area) {
+    const std::int64_t now = static_cast<std::int64_t>(std::time(nullptr));
+    const auto picks = Recommendations::dailyTraining(context.registry, context.stats, now, 3);
+    if (picks.empty()) return 0.0f;
+
+    renderer.drawText("Treino de hoje", area.x, area.y, 18, Theme::kText, true);
+
+    const float spacing = 12.0f;
+    const float titleHeight = 30.0f;
+    const float cardHeight = 118.0f;
+    const float captionHeight = 24.0f;
+    const std::size_t count = picks.size();
+    const float cardWidth =
+        (area.w - spacing * static_cast<float>(count - 1)) / static_cast<float>(count);
+    const float cardY = area.y + titleHeight;
+
+    for (std::size_t i = 0; i < count; ++i) {
+        const Rect card{area.x + static_cast<float>(i) * (cardWidth + spacing), cardY,
+                        cardWidth, cardHeight};
+        if (Widgets::gameCard(renderer, input, card, *picks[i].game)) {
+            context.startGame(*picks[i].game);
+        }
+        renderer.drawText(picks[i].reason, card.x + 2.0f, card.bottom() + 6.0f, 13,
+                          Theme::kAccent);
+    }
+
+    return titleHeight + cardHeight + captionHeight;
 }
 
 void HomeScreen::renderBottomPanels(AppContext& context, Renderer& renderer,
@@ -180,6 +215,8 @@ float HomeScreen::render(AppContext& context, Renderer& renderer, const Input& i
 
     renderer.drawLine(area.x, y, area.right(), y, Theme::kGrid);
     y += 14;
+
+    y += renderDailyTraining(context, renderer, input, Rect{area.x, y, area.w, 0}) + 20;
 
     renderer.drawText("Escolha um jogo", area.x, y, 20, Theme::kText, true);
     y += 36;

@@ -1,5 +1,6 @@
 #include "core/Statistics.h"
 
+#include "core/AdaptiveDifficulty.h"
 #include "core/SaveNumbers.h"
 
 #include <algorithm>
@@ -13,6 +14,16 @@
 #include <vector>
 
 namespace {
+
+// Generous sanity ceiling for a corrupted save's difficultyLevel: never
+// realistically reached by play, just a guard against a garbage value.
+constexpr float kMaxDifficultyLevel = 1000.0f;
+
+// How much each level above/below a category's own average difficulty
+// shifts the effective score fed into the skill EMA, and the cap on that
+// shift so one unusually easy or hard session cannot dominate it.
+constexpr float kDifficultyBonusPerLevel = 3.0f;
+constexpr float kMaxDifficultyBonus = 15.0f;
 
 bool isValidCategory(GameCategory category) {
     const int index = static_cast<int>(category);
@@ -144,10 +155,24 @@ void Statistics::recordResult(const std::string& gameId, GameCategory category,
     CategoryStats& categoryStats = categories_[static_cast<int>(category)];
     if (categoryStats.gamesPlayed == 0 || !std::isfinite(categoryStats.skill)) {
         categoryStats.skill = static_cast<float>(record.score);
+        categoryStats.averageDifficulty = static_cast<float>(record.difficulty);
     } else {
+        // A session played above your own typical difficulty in this
+        // category says more about your skill than the raw score alone (and
+        // one played below it says less) — an IRT-inspired nudge on top of
+        // the score EMA, weighed against each player's own history instead
+        // of a fixed cross-game scale.
+        const float difficultyDelta =
+            static_cast<float>(record.difficulty) - categoryStats.averageDifficulty;
+        const float difficultyBonus = std::clamp(
+            difficultyDelta * kDifficultyBonusPerLevel, -kMaxDifficultyBonus, kMaxDifficultyBonus);
+        const float weightedScore =
+            std::clamp(static_cast<float>(record.score) + difficultyBonus, 0.0f, 100.0f);
+
         categoryStats.skill = std::clamp(
-            categoryStats.skill * 0.7f + static_cast<float>(record.score) * 0.3f,
-            0.0f, 100.0f);
+            categoryStats.skill * 0.7f + weightedScore * 0.3f, 0.0f, 100.0f);
+        categoryStats.averageDifficulty = categoryStats.averageDifficulty * 0.8f +
+                                          static_cast<float>(record.difficulty) * 0.2f;
     }
     categoryStats.gamesPlayed = saturatingAdd(categoryStats.gamesPlayed, 1);
     totalGames_ = saturatingAdd(totalGames_, 1);
@@ -167,6 +192,9 @@ void Statistics::recordResult(const std::string& gameId, GameCategory category,
     gameStats.totalCorrect = saturatingAdd(gameStats.totalCorrect, record.correct);
     gameStats.totalAttempts = saturatingAdd(gameStats.totalAttempts, record.total);
     gameStats.bestDifficulty = std::max(gameStats.bestDifficulty, record.difficulty);
+    gameStats.difficultyLevel =
+        AdaptiveDifficulty::nextDifficulty(gameStats.difficultyLevel, record.score);
+    gameStats.lastPlayedTimestamp = record.timestamp;
     gameStats.sessions = saturatingAdd(gameStats.sessions, 1);
 
     history_.push_back(record);
@@ -251,6 +279,7 @@ void Statistics::toMap(KeyValueMap& out) const {
         const std::string prefix = "stats.category." + std::to_string(index);
         out[prefix + ".skill"] = std::to_string(categories_[index].skill);
         out[prefix + ".games"] = std::to_string(categories_[index].gamesPlayed);
+        out[prefix + ".avgDifficulty"] = std::to_string(categories_[index].averageDifficulty);
     }
 
     for (const auto& [gameId, stats] : gameStats_) {
@@ -263,6 +292,8 @@ void Statistics::toMap(KeyValueMap& out) const {
         out[prefix + ".totalCorrect"] = std::to_string(stats.totalCorrect);
         out[prefix + ".totalAttempts"] = std::to_string(stats.totalAttempts);
         out[prefix + ".bestDifficulty"] = std::to_string(stats.bestDifficulty);
+        out[prefix + ".difficultyLevel"] = std::to_string(stats.difficultyLevel);
+        out[prefix + ".lastPlayedTimestamp"] = std::to_string(stats.lastPlayedTimestamp);
     }
 
     std::ostringstream joined;
@@ -303,6 +334,13 @@ void Statistics::fromMap(const KeyValueMap& in) {
                 categories_[index].gamesPlayed = games;
             }
         }
+        if (const auto it = in.find(prefix + ".avgDifficulty"); it != in.end()) {
+            float avgDifficulty = 0.0f;
+            if (savenum::parseFiniteFloat(it->second, avgDifficulty)) {
+                categories_[index].averageDifficulty =
+                    std::clamp(avgDifficulty, 0.0f, kMaxDifficultyLevel);
+            }
+        }
     }
 
     constexpr const char* kGamePrefix = "stats.game.";
@@ -323,6 +361,16 @@ void Statistics::fromMap(const KeyValueMap& in) {
         if (field == "averageScore") {
             if (savenum::parseFiniteFloat(value, floatValue)) {
                 stats.averageScore = std::clamp(floatValue, 0.0f, 100.0f);
+            }
+        } else if (field == "difficultyLevel") {
+            if (savenum::parseFiniteFloat(value, floatValue)) {
+                stats.difficultyLevel =
+                    std::clamp(floatValue, 0.0f, kMaxDifficultyLevel);
+            }
+        } else if (field == "lastPlayedTimestamp") {
+            std::int64_t timestamp = 0;
+            if (savenum::parseNonNegative(value, INT64_MAX, timestamp)) {
+                stats.lastPlayedTimestamp = timestamp;
             }
         } else if (savenum::parseNonNegativeInt(value, kIntMax, integerValue)) {
             if (field == "sessions") stats.sessions = integerValue;

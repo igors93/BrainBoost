@@ -16,7 +16,9 @@ struct GameInfo {
     std::string description;  // short description shown on the card
     GameCategory category = GameCategory::Memory;
     unsigned int color = 0x1F2937;  // card background tint, 0xRRGGBB
-    std::function<std::unique_ptr<Game>()> factory;
+    // Builds a session at `startingDifficulty` (the game's persisted
+    // GameStats::difficultyLevel, rounded — see AppContext::startGame).
+    std::function<std::unique_ptr<Game>(int startingDifficulty)> factory;
 
     bool isImplemented() const { return static_cast<bool>(factory); }
 };

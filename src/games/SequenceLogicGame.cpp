@@ -7,16 +7,23 @@
 SequenceLogicGame::SequenceLogicGame() : rng_(std::random_device{}()) { nextRound(); }
 SequenceLogicGame::SequenceLogicGame(std::uint32_t seed) : rng_(seed) { nextRound(); }
 
+SequenceLogicGame::SequenceLogicGame(std::uint32_t seed, int startingDifficulty)
+    : rng_(seed),
+      difficultyOffset_(std::clamp(startingDifficulty, 0, kMaxDifficulty)) {
+    nextRound();
+}
+
 void SequenceLogicGame::nextRound() {
+    const int effectiveDifficulty = std::max(0, difficultyOffset_ + sessionBump_);
     std::uniform_int_distribution<int> ruleDist(0, 2);
-    std::uniform_int_distribution<int> startDist(1, 12);
+    std::uniform_int_distribution<int> startDist(1, 12 + effectiveDifficulty * 4);
     constexpr int kShownTerms = 4;
     int terms[kShownTerms + 1];
     int value = startDist(rng_);
 
     switch (ruleDist(rng_)) {
         case 0: {
-            std::uniform_int_distribution<int> step(2, 9);
+            std::uniform_int_distribution<int> step(2, 9 + effectiveDifficulty * 3);
             const int k = step(rng_);
             for (int& term : terms) { term = value; value += k; }
             break;
@@ -25,7 +32,7 @@ void SequenceLogicGame::nextRound() {
             for (int& term : terms) { term = value; value *= 2; }
             break;
         default: {
-            std::uniform_int_distribution<int> step(1, 6);
+            std::uniform_int_distribution<int> step(1, 6 + effectiveDifficulty * 2);
             const int a = step(rng_);
             const int b = a + step(rng_);
             for (int i = 0; i <= kShownTerms; ++i) {
@@ -43,7 +50,10 @@ void SequenceLogicGame::nextRound() {
 
     const int answer = terms[kShownTerms];
     std::set<int> values{answer};
-    std::uniform_int_distribution<int> offset(-6, 6);
+    // Higher difficulty packs distractors closer to the answer, so magnitude
+    // alone stops being a shortcut to eliminate wrong options.
+    const int spread = std::max(2, 6 - effectiveDifficulty / 2);
+    std::uniform_int_distribution<int> offset(-spread, spread);
     int attempts = 0;
     while (values.size() < kOptionCount && attempts < 100) {
         ++attempts;
@@ -65,7 +75,24 @@ void SequenceLogicGame::nextRound() {
 void SequenceLogicGame::chooseOption(int index) {
     if (phase_ != Phase::Question || index < 0 || index >= kOptionCount) return;
     chosenOption_ = index;
-    if (chosenOption_ == correctOption_) ++correctCount_;
+    // Bidirectional intra-session staircase, mirroring MentalMathGame: a
+    // short correct streak raises the level right away, a shorter wrong
+    // streak gives it back.
+    if (chosenOption_ == correctOption_) {
+        ++correctCount_;
+        ++consecutiveCorrect_;
+        consecutiveWrong_ = 0;
+        if (consecutiveCorrect_ >= kCorrectStreakToAdvance) {
+            ++sessionBump_;
+            consecutiveCorrect_ = 0;
+        }
+    } else {
+        consecutiveCorrect_ = 0;
+        if (++consecutiveWrong_ >= kWrongStreakToRetreat) {
+            --sessionBump_;
+            consecutiveWrong_ = 0;
+        }
+    }
     phase_ = Phase::Feedback;
     feedbackTimer_ = 0.9f;
 }
@@ -92,6 +119,6 @@ GameResult SequenceLogicGame::result() const {
     result.total = kTotalRounds;
     result.score = correctCount_ * 100 / kTotalRounds;
     result.xpEarned = correctCount_ * 18;
-    result.difficulty = round_ / 3;
+    result.difficulty = std::max(0, difficultyOffset_ + sessionBump_);
     return result;
 }

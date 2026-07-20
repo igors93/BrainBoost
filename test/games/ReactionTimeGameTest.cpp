@@ -76,6 +76,56 @@ void testValidSessionProducesBoundedResult() {
     TEST_CHECK(result.xpEarned > 0);
 }
 
+// Higher difficulty shortens the minimum wait before "go" (default floor is
+// 1.5s; kMaxDifficulty pulls it down to 0.5s), so across enough seeds the
+// minimum observed wait must fall below the default floor.
+void testHigherDifficultyShortensMinimumWait() {
+    bool sawBelowDefaultFloor = false;
+    for (std::uint32_t seed = 1; seed <= 100 && !sawBelowDefaultFloor; ++seed) {
+        auto clock = std::make_shared<ManualClock>();
+        ReactionTimeGame game(seed, clock, 10);
+        game.update(0.0f, startInput());
+        TEST_CHECK(game.waitingSecondsRemaining() >= 0.5f - 0.001f);
+        if (game.waitingSecondsRemaining() < 1.5f) sawBelowDefaultFloor = true;
+    }
+    TEST_CHECK(sawBelowDefaultFloor);
+}
+
+void testDifficultyIsClampedToMaximum() {
+    auto clock = std::make_shared<ManualClock>();
+    ReactionTimeGame game(3, clock, 999);
+    game.update(0.0f, startInput());
+    TEST_CHECK(game.waitingSecondsRemaining() >= 0.5f - 0.001f);
+}
+
+// A false start is an unambiguous "too hard right now" signal: it eases the
+// intra-session difficulty back immediately (see update()).
+void testFalseStartLowersDifficultyImmediately() {
+    auto clock = std::make_shared<ManualClock>();
+    ReactionTimeGame game(5, clock, 4);
+    TEST_CHECK(game.result().difficulty == 4);
+    game.update(0.0f, startInput());
+    game.update(0.0f, panelClick());  // false start: still in Waiting
+    TEST_CHECK(game.isShowingTooEarly());
+    TEST_CHECK(game.result().difficulty == 3);
+}
+
+// Two clean reactions in a row raise the intra-session difficulty (see
+// update()'s Phase::Go branch).
+void testCleanStreakRaisesDifficulty() {
+    auto clock = std::make_shared<ManualClock>();
+    ReactionTimeGame game(6, clock, 2);
+    TEST_CHECK(game.result().difficulty == 2);
+    game.update(0.0f, startInput());
+    for (int trial = 0; trial < 2; ++trial) {
+        advanceToGreen(game);
+        clock->advance(0.2);
+        game.update(0.0f, panelClick());
+        game.update(2.0f, GameInput{});  // pass the TrialResult pause
+    }
+    TEST_CHECK(game.result().difficulty == 3);
+}
+
 }  // namespace
 
 int main() {
@@ -84,6 +134,10 @@ int main() {
     testEarlyClickConsumesTrial();
     testAllFalseStartsAwardNothing();
     testValidSessionProducesBoundedResult();
+    testHigherDifficultyShortensMinimumWait();
+    testDifficultyIsClampedToMaximum();
+    testFalseStartLowersDifficultyImmediately();
+    testCleanStreakRaisesDifficulty();
     std::cout << "All ReactionTimeGame model tests passed!\n";
     return 0;
 }

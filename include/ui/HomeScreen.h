@@ -19,6 +19,10 @@ public:
 
 private:
     float renderHeader(AppContext& context, Renderer& renderer, const Rect& area);
+    // "Treino de hoje": a short, category-diverse set of recommended games
+    // (see core/Recommendations.h). Returns the height used.
+    float renderDailyTraining(AppContext& context, Renderer& renderer,
+                              const Input& input, const Rect& area);
     void renderBottomPanels(AppContext& context, Renderer& renderer,
                             const Input& input, const Rect& area);
 };

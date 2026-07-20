@@ -8,8 +8,13 @@
 MentalMathGame::MentalMathGame() : rng_(std::random_device{}()) { nextQuestion(); }
 MentalMathGame::MentalMathGame(std::uint32_t seed) : rng_(seed) { nextQuestion(); }
 
+MentalMathGame::MentalMathGame(std::uint32_t seed, int startingDifficulty)
+    : rng_(seed), levelOffset_(std::clamp(startingDifficulty, 0, kMaxDifficulty)) {
+    nextQuestion();
+}
+
 void MentalMathGame::nextQuestion() {
-    const int level = questionIndex_ / 3;
+    const int level = std::max(0, levelOffset_ + sessionBump_);
     std::uniform_int_distribution<int> operand(1, 10 + level * 15);
     std::uniform_int_distribution<int> operation(0, 2);
 
@@ -56,7 +61,25 @@ void MentalMathGame::applyTextInput(const GameInput& input) {
 void MentalMathGame::submitAnswer() {
     if (answerText_.empty()) return;
     lastAnswerCorrect_ = (std::atoi(answerText_.c_str()) == expectedAnswer_);
-    if (lastAnswerCorrect_) ++correctCount_;
+    // Bidirectional intra-session staircase: a short correct streak raises
+    // the level right away, but it takes a shorter wrong streak to give it
+    // back, so the session keeps adapting in real time instead of only
+    // ramping up on a fixed question schedule.
+    if (lastAnswerCorrect_) {
+        ++correctCount_;
+        ++consecutiveCorrect_;
+        consecutiveWrong_ = 0;
+        if (consecutiveCorrect_ >= kCorrectStreakToAdvance) {
+            ++sessionBump_;
+            consecutiveCorrect_ = 0;
+        }
+    } else {
+        consecutiveCorrect_ = 0;
+        if (++consecutiveWrong_ >= kWrongStreakToRetreat) {
+            --sessionBump_;
+            consecutiveWrong_ = 0;
+        }
+    }
     answerFocused_ = false;
     phase_ = Phase::Feedback;
     feedbackTimer_ = 0.8f;
@@ -95,6 +118,6 @@ GameResult MentalMathGame::result() const {
     result.score = correctCount_ * 100 / kTotalQuestions;
     result.xpEarned =
         correctCount_ * 15 + (correctCount_ == kTotalQuestions ? 20 : 0);
-    result.difficulty = questionIndex_ / 3;
+    result.difficulty = std::max(0, levelOffset_ + sessionBump_);
     return result;
 }

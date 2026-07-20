@@ -1,15 +1,24 @@
 #include "core/GameRegistry.h"
 
+#include <random>
+
+#include "games/FillInPuzzleGame.h"
 #include "games/MentalMathGame.h"
 #include "games/NumberMemoryGame.h"
 #include "games/ReactionTimeGame.h"
 #include "games/SequenceLogicGame.h"
+#include "games/SpatialMemoryGame.h"
 
 namespace {
 
+// Each game is seeded with a fresh random draw per session; startingDifficulty
+// carries the player's persisted progress into that session (see
+// AppContext::startGame and GameStats::difficultyLevel).
 template <typename T>
-std::function<std::unique_ptr<Game>()> makeFactory() {
-    return [] { return std::make_unique<T>(); };
+std::function<std::unique_ptr<Game>(int)> makeFactory() {
+    return [](int startingDifficulty) {
+        return std::make_unique<T>(std::random_device{}(), startingDifficulty);
+    };
 }
 
 }  // namespace
@@ -21,8 +30,9 @@ GameRegistry::GameRegistry() {
                       makeFactory<NumberMemoryGame>()});
 
     games_.push_back({"visual_memory", "Memória Visual",
-                      "Encontre os pares de figuras iguais.",
-                      GameCategory::Memory, 0x3B1D54, nullptr});
+                      "Lembre-se e repita a sequência de alertas na grade.",
+                      GameCategory::Memory, 0x3B1D54,
+                      makeFactory<SpatialMemoryGame>()});
 
     games_.push_back({"mental_math", "Cálculo Mental",
                       "Resolva operações mentalmente.",
@@ -45,6 +55,11 @@ GameRegistry::GameRegistry() {
                       "Descubra o próximo item da sequência.",
                       GameCategory::Logic, 0x5B1230,
                       makeFactory<SequenceLogicGame>()});
+
+    games_.push_back({"fill_in_puzzle", "Quase Nada",
+                      "Preencha a grade com os números certos, usando as pistas e os cruzamentos.",
+                      GameCategory::Logic, 0x264653,
+                      makeFactory<FillInPuzzleGame>()});
 
     games_.push_back({"quick_reaction", "Reação Rápida",
                       "Teste seu tempo de reação e reflexos.",

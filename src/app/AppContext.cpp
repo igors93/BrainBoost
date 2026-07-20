@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <limits>
@@ -118,7 +119,12 @@ bool AppContext::saveProgress() {
 void AppContext::startGame(const GameInfo& info) {
     if (!info.isImplemented()) return;
 
-    activeGame = info.factory();
+    // Seed the session from where the player left off (see
+    // GameStats::difficultyLevel / AdaptiveDifficulty) instead of always
+    // restarting at the game's fixed baseline.
+    const int startingDifficulty =
+        static_cast<int>(std::lround(stats.forGame(info.id).difficultyLevel));
+    activeGame = info.factory(startingDifficulty);
     activeGameId = info.id;
     activeGameStartedAt = std::chrono::steady_clock::now();
     resultApplied = false;
