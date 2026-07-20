@@ -59,9 +59,11 @@ inline Rect spatialMemoryGridCell(const Rect& area, int index) {
 }
 
 // Left portion of the panel reserved for the puzzle grid; the remainder is
-// the side number bank.
+// the side number bank. Reserves a header strip above the grid for the
+// instructions line so it never sits underneath the first row of cells.
 inline Rect fillInGridArea(const Rect& area) {
-    return {area.x, area.y, area.w * 0.55f, area.h};
+    constexpr float kHeaderHeight = 26.0f;
+    return {area.x, area.y + kHeaderHeight, area.w * 0.55f, area.h - kHeaderHeight};
 }
 
 // Same cell geometry is used for hit-testing (GameScreen) and drawing

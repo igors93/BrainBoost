@@ -55,6 +55,7 @@ public:
     bool slotSolved(int index) const { return slots_[static_cast<std::size_t>(index)].solved; }
 
     int selectedSlot() const { return selectedSlot_; }
+    int cursorOffset() const { return cursorOffset_; }
     int startingDifficulty() const { return startingDifficulty_; }
 
     // Test/dev support only: reveals the hidden target for a slot without
@@ -113,6 +114,8 @@ private:
 
     int selectedSlot_ = -1;
     int cursorOffset_ = 0;
+    int lastClickedRow_ = -1;
+    int lastClickedCol_ = -1;
     int mistakes_ = 0;
     bool solved_ = false;
     float mistakeFlashTimer_ = 0.0f;

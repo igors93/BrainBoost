@@ -38,6 +38,38 @@ void typeSlotSolution(FillInPuzzleGame& game, int slotIndex) {
     }
 }
 
+// Regression: clicking a different cell that still belongs to the currently
+// selected slot must only move the cursor there, never toggle to the
+// crossing slot — otherwise digits typed after that click silently land in
+// the wrong orientation and the slot the player thinks they finished never
+// registers as solved.
+void testClickingADifferentCellInSameSlotMovesCursorNotOrientation() {
+    FillInPuzzleGame game(17, 0);
+    for (int target = 0; target < game.slotCount(); ++target) {
+        const int firstRow = game.slotRow(target);
+        const int firstCol = game.slotCol(target);
+        const bool across = game.slotOrientation(target) == FillInPuzzleGame::Orientation::Across;
+        const int length = game.slotLength(target);
+
+        for (int offset = 1; offset < length; ++offset) {
+            GameInput selectFirst;
+            selectFirst.optionIndex = firstRow * game.cols() + firstCol;
+            game.update(0.0f, selectFirst);
+            if (game.selectedSlot() != target) game.update(0.0f, selectFirst);
+            TEST_CHECK(game.selectedSlot() == target);
+
+            const int row = across ? firstRow : firstRow + offset;
+            const int col = across ? firstCol + offset : firstCol;
+            GameInput clickInterior;
+            clickInterior.optionIndex = row * game.cols() + col;
+            game.update(0.0f, clickInterior);
+
+            TEST_CHECK(game.selectedSlot() == target);
+            TEST_CHECK(game.cursorOffset() == offset);
+        }
+    }
+}
+
 void testEveryOpenCellBelongsToASlot() {
     for (std::uint32_t seed : {1u, 2u, 3u, 42u}) {
         FillInPuzzleGame game(seed, 0);
@@ -207,6 +239,7 @@ void testDeterministicGenerationForSameSeedAndDifficulty() {
 
 int main() {
     std::cout << "Running FillInPuzzleGameTest...\n";
+    testClickingADifferentCellInSameSlotMovesCursorNotOrientation();
     testEveryOpenCellBelongsToASlot();
     testDifficultySizingIsMonotonicAndClamped();
     testGivenClueCountDecreasesWithDifficulty();

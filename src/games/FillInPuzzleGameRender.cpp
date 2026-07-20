@@ -6,15 +6,36 @@
 #include "games/GameLayout.h"
 #include "ui/Renderer.h"
 
+namespace {
+// Clearly distinct from both the blocked-cell and default-open-cell colors
+// (see the render loop below), so the active slot always reads at a glance.
+constexpr Color kSlotHighlight = rgb(0x24406B);
+}  // namespace
+
 void FillInPuzzleGame::render(Renderer& renderer, const Rect& area) const {
     renderer.drawText("Clique numa célula e digite os números do banco ao lado.",
                       area.x, area.y, 13, Theme::kTextMuted);
+
+    // The exact cell the next keystroke will land on, so selection is always
+    // visible even right after toggling orientation.
+    int cursorRow = -1;
+    int cursorCol = -1;
+    if (selectedSlot_ >= 0) {
+        const Slot& selected = slots_[static_cast<std::size_t>(selectedSlot_)];
+        if (!selected.solved && cursorOffset_ < selected.length) {
+            const auto [row, col] = cellAt(selected, cursorOffset_);
+            cursorRow = row;
+            cursorCol = col;
+        }
+    }
 
     for (int r = 0; r < rows_; ++r) {
         for (int c = 0; c < cols_; ++c) {
             const Rect cell = GameLayout::fillInGridCell(area, r, c, rows_, cols_);
             if (isBlocked(r, c)) {
-                renderer.fillRect(cell, Theme::kPanelSoft);
+                // Deliberately near-black: must never be mistaken for a
+                // writable cell.
+                renderer.fillRect(cell, Theme::kBackground);
                 continue;
             }
 
@@ -27,13 +48,16 @@ void FillInPuzzleGame::render(Renderer& renderer, const Rect& area) const {
             if (mistakeFlashTimer_ > 0.0f && inSelectedSlot) {
                 background = Theme::kDangerButton;
             } else if (inSelectedSlot) {
-                background = lighten(Theme::kButton, 24);
+                background = kSlotHighlight;
             } else if (isLocked(r, c)) {
                 background = Theme::kPanel;
             }
 
             renderer.fillRect(cell, background);
             renderer.outlineRect(cell, Theme::kGrid, 1);
+            if (r == cursorRow && c == cursorCol) {
+                renderer.outlineRect(cell, Theme::kWarning, 3);
+            }
 
             const char ch = displayedChar(r, c);
             if (ch != '\0') {

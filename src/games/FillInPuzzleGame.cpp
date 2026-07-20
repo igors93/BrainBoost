@@ -150,6 +150,8 @@ void FillInPuzzleGame::generate(int startingDifficulty) {
     locked_.assign(cellIndex(rows_ - 1, cols_ - 1) + 1, false);
     selectedSlot_ = -1;
     cursorOffset_ = 0;
+    lastClickedRow_ = -1;
+    lastClickedCol_ = -1;
     mistakes_ = 0;
     solved_ = false;
     mistakeFlashTimer_ = 0.0f;
@@ -208,13 +210,16 @@ void FillInPuzzleGame::selectCellAt(int row, int col) {
 
     const int across = slotAt(row, col, Orientation::Across);
     const int down = slotAt(row, col, Orientation::Down);
+    const bool sameCellAsLastClick = row == lastClickedRow_ && col == lastClickedCol_;
+    lastClickedRow_ = row;
+    lastClickedCol_ = col;
 
     Orientation orientation = across >= 0 ? Orientation::Across : Orientation::Down;
     if (selectedSlot_ >= 0) {
         const Slot& current = slots_[static_cast<std::size_t>(selectedSlot_)];
-        if (slotCovers(current, row, col)) {
-            // Clicking within the already-selected slot toggles orientation
-            // when the crossing slot exists here, otherwise keeps it as is.
+        if (sameCellAsLastClick) {
+            // Re-clicking the exact same cell toggles orientation when the
+            // crossing slot exists here, otherwise keeps it as is.
             if (current.orientation == Orientation::Across && down >= 0) {
                 orientation = Orientation::Down;
             } else if (current.orientation == Orientation::Down && across >= 0) {
@@ -222,6 +227,11 @@ void FillInPuzzleGame::selectCellAt(int row, int col) {
             } else {
                 orientation = current.orientation;
             }
+        } else if (slotCovers(current, row, col)) {
+            // A different cell but still within the slot already being
+            // typed: just move the cursor there, don't toggle orientation
+            // out from under the player mid-entry.
+            orientation = current.orientation;
         }
     }
 
